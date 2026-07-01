@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+backend/.venv*/
+.venv*/
+
+# Data (regenerate with scripts/download.py + scripts/ingest.py)
+backend/data/zolpo.db
+backend/data/dumps/
+
+# OS
+.DS_Store
+*.db.bak
+*.db-journal

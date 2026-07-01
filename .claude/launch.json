@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "zolpo",
+      "runtimeExecutable": "backend/.venv312/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--app-dir", "backend", "--host", "127.0.0.1", "--port", "8020"],
+      "port": 8020
+    }
+  ]
+}

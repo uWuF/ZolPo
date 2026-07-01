@@ -1,0 +1,13 @@
+# ZolPo backend dependencies — pinned to the tested versions (bump deliberately,
+# not by accident of install date).
+fastapi==0.138.0
+uvicorn[standard]==0.49.0
+requests==2.34.2
+
+# publishedprices.co.il (Rami Levy and other Cerberus chains) omits its TLS
+# intermediate cert; truststore lets Python use the OS system trust store to
+# complete the chain. Used by ingest/cerberus.py.
+truststore==0.10.4
+
+# Note: ZolPo downloads and parses the government XML itself (ingest/), so the
+# il-supermarket-scraper / il-supermarket-parser packages are NOT required.
