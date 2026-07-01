@@ -135,9 +135,16 @@ def api_placeholder(keyword: str):
 # Static frontend (mounted last so /api/* wins)
 # --------------------------------------------------------------------------- #
 
+def _index() -> FileResponse:
+    # The HTML must always revalidate, or browsers keep a stale page that points
+    # at old asset versions (assets themselves are cache-busted via ?v=N).
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"),
+                        headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    return _index()
 
 
 @app.get("/{path:path}")
@@ -150,4 +157,4 @@ def static_files(path: str):
         inside = False
     if inside and os.path.isfile(safe):
         return FileResponse(safe)
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    return _index()
