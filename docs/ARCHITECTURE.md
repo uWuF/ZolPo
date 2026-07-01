@@ -39,13 +39,14 @@ command never has to change.
 
 ## Ingest modules (`backend/ingest/`)
 
-| Module          | Responsibility |
-|-----------------|----------------|
-| `shufersal.py`  | Download from Shufersal's open portal. |
-| `cerberus.py`   | Login + download from the shared `publishedprices.co.il` portal (Rami Levy …). |
-| `directory.py`  | Build Tel Aviv registry entries for a Cerberus chain from its Stores directory. |
-| `geocode.py`    | Address → lat/lon (Nominatim → Photon → ZIP fallback). |
-| `loader.py`     | Parse `PriceFull` XML → DB, for every registry store of any chain. |
+| Module            | Responsibility |
+|-------------------|----------------|
+| `shufersal.py`    | Download from Shufersal's open portal. |
+| `cerberus.py`     | Login + download from the shared `publishedprices.co.il` portal (Rami Levy, AM:PM/Dor Alon, Yellow …). |
+| `publishprice.py` | Download from the PublishPrice portal family (Carrefour). |
+| `directory.py`    | Build Tel Aviv registry entries from a chain's Stores directory (portal-agnostic core + per-portal builders). |
+| `geocode.py`      | Address → lat/lon (Nominatim → Photon → ZIP fallback). |
+| `loader.py`       | Parse `PriceFull` XML → DB, for every registry store of any chain. |
 
 ## The two keys that make it scale
 

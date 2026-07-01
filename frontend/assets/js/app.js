@@ -78,9 +78,9 @@
       async loadStores() {
         try { this.stores = await api.stores(); } catch (_) { this.stores = []; }
         const valid = new Set(this.stores.map(s => s.key));
-        // Default = a cross-chain supermarket basket so the core feature (compare
+        // Default = one central branch per chain so the core feature (compare
         // chains) is visible on first load.
-        let def = ['1:11', '1:117', '2:733', '2:737'].filter(k => valid.has(k));
+        let def = ['1:11', '2:733', '6:085', '3:501'].filter(k => valid.has(k));
         if (def.length < 2) {
           def = this.stores.filter(s => /Sheli|Deal|Rami/.test(s.format_en || ''))
                            .slice(0, 4).map(s => s.key);
