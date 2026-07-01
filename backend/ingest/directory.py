@@ -15,6 +15,7 @@ docs/ADDING_A_CHAIN.md.
 
 from __future__ import annotations
 
+import re
 import uuid as _uuid
 import xml.etree.ElementTree as ET
 
@@ -24,7 +25,7 @@ from .cerberus import (CerberusClient, download_store_pricefull,
 from .geocode import geocode
 
 # Curated English labels for the known Rami Levy Tel Aviv branches; anything new
-# falls back to "Rami Levy <id>" until a nicer label is added.
+# falls back to a street-glossary transliteration of the address.
 RAMI_LEVY_LABELS_EN = {
     "733": "Ben Yehuda 23",
     "734": "Esther HaMalka",
@@ -33,6 +34,41 @@ RAMI_LEVY_LABELS_EN = {
     "055": "Ramat HaChayal",
     "735": "HaChashmonaim",
 }
+
+# HE -> EN for the common Tel Aviv street names, used to auto-build label_en for
+# chains with many branches (AM:PM, Yellow). First match wins; anything not in
+# the glossary keeps the chain name + store id.
+_STREETS_EN = {
+    "בן יהודה": "Ben Yehuda", "דיזנגוף": "Dizengoff", "אלנבי": "Allenby",
+    "קינג גורג": "King George", "קינג ג'ורג": "King George", "שנקין": "Sheinkin",
+    "ארלוזורוב": "Arlozorov", "אבן גבירול": "Ibn Gvirol", "נורדאו": "Nordau",
+    "הירקון": "HaYarkon", "בוגרשוב": "Bograshov", "ריינס": "Reines",
+    "יהודה הלוי": "Yehuda HaLevi", "רוטשילד": "Rothschild", "פלורנטין": "Florentin",
+    "לוינסקי": "Levinsky", "סלמה": "Salame", "דרך סלמה": "Salame", "הרצל": "Herzl",
+    "יפו": "Jaffa", "דרך נמיר": "Namir Road", "יצחק שדה": "Yitzhak Sadeh",
+    "החשמונאים": "HaHashmonaim", "קרליבך": "Carlebach", "אחד העם": "Ahad Ha'am",
+    "בזל": "Basel", "ז'בוטינסקי": "Jabotinsky", "דרך הטייסים": "HaTayasim Road",
+    "אילת": "Eilat", "המסגר": "HaMasger", "לה גוורדיה": "La Guardia",
+    "אבו כביר": "Abu Kabir", "נווה צדק": "Neve Tzedek", "עולי ציון": "Olei Zion",
+    "ויצמן": "Weizmann", "פנקס": "Pinkas", "דרך השלום": "Derech HaShalom",
+    "משה דיין": "Moshe Dayan", "קיבוץ גלויות": "Kibbutz Galuyot",
+    "לבנדה": "Levanda", "הר ציון": "Har Zion", "שלבים": "Shlavim",
+}
+
+
+def _label_en(chain: dict, sid: str, store_name: str, address: str) -> str:
+    """Curated Rami Levy label, else street-glossary from address/name, else id."""
+    if chain["key"] == "rami_levy" and sid in RAMI_LEVY_LABELS_EN:
+        return RAMI_LEVY_LABELS_EN[sid]
+    text = f"{address} {store_name}"
+    for he, en in _STREETS_EN.items():
+        if he in text:
+            num = ""
+            m = re.search(rf"{re.escape(he)}\s*(\d+)|(\d+)\s*{re.escape(he)}", text)
+            if m:
+                num = " " + (m.group(1) or m.group(2))
+            return f"{en}{num}"
+    return f"{chain['name_en']} {sid.lstrip('0') or sid}"
 
 
 def _t(node, *names) -> str:
@@ -69,26 +105,33 @@ def _store_dict(st, sub_id: str) -> dict:
     }
 
 
-def build_tel_aviv_registry(chain_key: str, do_geocode: bool = True) -> list[dict]:
+def _is_tel_aviv(city: str) -> bool:
+    """Chains write City as the numeric code (5000) or as a Hebrew name."""
+    c = (city or "").strip()
+    return c == TEL_AVIV_CITY_CODE or "תל אביב" in c
+
+
+def _build_entries(chain_key: str, directory: list[dict], has_price, download,
+                   do_geocode: bool) -> list[dict]:
+    """
+    Portal-agnostic core: filter Tel Aviv stores that have a live PriceFull,
+    download it, geocode, and emit ready-to-merge registry dicts.
+    `has_price(sid) -> bool-ish`, `download(sid) -> None` are portal closures.
+    """
     chain = CHAINS[chain_key]
-    client = CerberusClient(chain["cerberus_user"]).login()
+    ta = [s for s in directory if _is_tel_aviv(s["city"]) and s["store_id"]]
 
-    directory = parse_stores_directory(fetch_stores_directory(client))
-    ta = [s for s in directory if s["city"] == TEL_AVIV_CITY_CODE and s["store_id"]]
-
-    price_names = client.list_files("PriceFull")
     entries = []
     for s in ta:
         sid = s["store_id"]
-        if not newest_pricefull_name(price_names, sid):
+        if not has_price(sid):
             continue  # no live price file -> can't compare, skip
-        download_store_pricefull(client, sid, dump_dir(chain_key, sid), names=price_names)
+        download(sid)
 
         geo = {"lat": None, "lon": None, "geo_approx": True}
         if do_geocode:
             geo = geocode(s["address"], zip_code=s["zip"])
 
-        label_en = RAMI_LEVY_LABELS_EN.get(sid, f"{chain['name_en']} {sid}")
         entries.append({
             "uuid": str(_uuid.uuid4()),
             "key": store_key(chain["id"], sid),
@@ -99,9 +142,9 @@ def build_tel_aviv_registry(chain_key: str, do_geocode: bool = True) -> list[dic
             "subchain_id": s["subchain_id"],
             "store_id": sid,
             "format": chain["name_he"],
-            "format_en": f"{chain['name_en']} (supermarket)",
+            "format_en": chain.get("format_en", f"{chain['name_en']} (supermarket)"),
             "store_name": s["store_name"],
-            "label_en": label_en,
+            "label_en": _label_en(chain, sid, s["store_name"], s["address"]),
             "label_he": s["store_name"],
             "city": "תל אביב - יפו",
             "city_code": TEL_AVIV_CITY_CODE,
@@ -113,3 +156,34 @@ def build_tel_aviv_registry(chain_key: str, do_geocode: bool = True) -> list[dic
             "dump": f"{chain_key}/{sid}",
         })
     return entries
+
+
+def build_tel_aviv_registry(chain_key: str, do_geocode: bool = True) -> list[dict]:
+    """Tel Aviv registry entries for a Cerberus (publishedprices.co.il) chain."""
+    chain = CHAINS[chain_key]
+    client = CerberusClient(chain["cerberus_user"],
+                            chain.get("cerberus_password", "")).login()
+    directory = parse_stores_directory(fetch_stores_directory(client))
+    price_names = client.list_files("PriceFull")
+    return _build_entries(
+        chain_key, directory,
+        has_price=lambda sid: newest_pricefull_name(price_names, sid),
+        download=lambda sid: download_store_pricefull(
+            client, sid, dump_dir(chain_key, sid), names=price_names),
+        do_geocode=do_geocode,
+    )
+
+
+def build_tel_aviv_registry_publishprice(chain_key: str, do_geocode: bool = True) -> list[dict]:
+    """Tel Aviv registry entries for a PublishPrice chain (Carrefour)."""
+    from . import publishprice as pp
+
+    files = pp.list_files(days_back=2)
+    directory = parse_stores_directory(pp.fetch_stores_directory(files))
+    return _build_entries(
+        chain_key, directory,
+        has_price=lambda sid: pp.newest_pricefull_name(files, sid),
+        download=lambda sid: pp.download_store_pricefull(
+            files, sid, dump_dir(chain_key, sid)),
+        do_geocode=do_geocode,
+    )

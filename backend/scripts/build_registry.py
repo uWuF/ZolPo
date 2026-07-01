@@ -15,7 +15,12 @@ import os
 import sys
 
 from app.config import CHAINS, REGISTRY_PATH, BACKEND_DIR, store_key
-from ingest.directory import build_tel_aviv_registry
+from ingest.directory import build_tel_aviv_registry, build_tel_aviv_registry_publishprice
+
+_BUILDERS = {
+    "cerberus": build_tel_aviv_registry,
+    "publishprice": build_tel_aviv_registry_publishprice,
+}
 
 LEGACY_PATH = os.path.join(BACKEND_DIR, "stores.json")  # pre-refactor location
 
@@ -50,8 +55,12 @@ def main(rebuild_chains: list[str]) -> None:
         if ck not in CHAINS:
             print(f"!! unknown chain '{ck}' — skipping")
             continue
+        builder = _BUILDERS.get(CHAINS[ck]["portal"])
+        if builder is None:
+            print(f"!! chain '{ck}' has portal '{CHAINS[ck]['portal']}' with no registry builder")
+            continue
         print(f"Rebuilding Tel Aviv stores for '{ck}' …")
-        fresh = build_tel_aviv_registry(ck)
+        fresh = builder(ck)
         registry = [e for e in registry if e.get("chain_key") != ck] + fresh
         print(f"   {len(fresh)} stores: {[e['store_id'] for e in fresh]}")
 

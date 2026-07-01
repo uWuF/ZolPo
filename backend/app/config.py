@@ -51,6 +51,48 @@ CHAINS = {
         "portal": "cerberus",
         "cerberus_user": "RamiLevi",
     },
+    "dor_alon": {   # the AM:PM city-convenience network
+        "key": "dor_alon",
+        "id": 3,
+        "chain_id_gov": "7290492000005",
+        "name_he": "AM:PM (דור אלון)",
+        "name_en": "AM:PM",
+        "portal": "cerberus",
+        "cerberus_user": "doralon",
+        "format_en": "AM:PM (convenience)",
+    },
+    "yellow": {     # Paz gas-station convenience stores
+        "key": "yellow",
+        "id": 4,
+        "chain_id_gov": "7290644700005",
+        "name_he": "yellow (פז)",
+        "name_en": "Yellow",
+        "portal": "cerberus",
+        "cerberus_user": "Paz_bo",
+        "cerberus_password": "paz468",
+        "format_en": "Yellow (convenience)",
+    },
+    "keshet": {
+        "key": "keshet",
+        "id": 5,
+        "chain_id_gov": "7290785400000",
+        "name_he": "קשת טעמים",
+        "name_en": "Keshet Teamim",
+        "portal": "cerberus",
+        "cerberus_user": "Keshet",
+        "format_en": "Keshet (supermarket)",
+        # No Tel Aviv store publishes a PriceFull today; re-run
+        # scripts/build_registry.py keshet to pick them up when they appear.
+    },
+    "carrefour": {  # ex Yeinot Bitan / Mega
+        "key": "carrefour",
+        "id": 6,
+        "chain_id_gov": "7290055700007",
+        "name_he": "קרפור",
+        "name_en": "Carrefour",
+        "portal": "publishprice",
+        "format_en": "Carrefour (supermarket)",
+    },
 }
 
 CHAIN_BY_ID = {c["id"]: c for c in CHAINS.values()}

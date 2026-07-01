@@ -44,6 +44,33 @@ Stores directory — **Tel Aviv-Yafo = 5000**.
   stores that have a downloadable file).
 - Downloader: `ingest/cerberus.py`.
 
+### AM:PM / Dor Alon — Cerberus (username `doralon`)
+- ChainID `7290492000005`. 32 Tel Aviv AM:PM branches with live PriceFull.
+
+### Yellow (Paz) — Cerberus (username `Paz_bo`, password `paz468`)
+- ChainID `7290644700005`. 13 Tel Aviv gas-station convenience stores.
+- (These portal credentials are public, published for the transparency law.)
+
+### Carrefour (ex Yeinot Bitan / Mega) — PublishPrice portal (no login)
+- ChainID `7290055700007`
+- Portal: `https://prices.carrefour.co.il/` — the index page embeds the day's
+  file list in inline JS (`const path/files`); `?date=YYYYMMDD` selects a day,
+  files download from `/<path>/<name>`. The "today" folder fills up gradually
+  overnight, so `ingest/publishprice.py` merges the last two days.
+- 23 Tel Aviv branches.
+
+### Probed and currently unavailable (state as of 2026-07-02)
+- **Tiv Taam** (`TivTaam`) and **Cofix** (`SuperCofixApp`): Cerberus login works
+  but the portals hold **no PriceFull files** at all right now.
+- **Keshet** (`Keshet`): publishes, but its single Tel Aviv store (`091`) has no
+  live file. A `CHAINS` entry exists; re-run `build_registry.py keshet` later.
+- **Super Yuda** (`yuda_ho`) / **Fresh Market** (`freshmarket`): Cerberus, but no
+  usable Stores directory (files nested in a folder / directory missing).
+- **Victory / Machsanei HaShuk** (Matrix portal `laibcatalog.co.il`): the file
+  table renders via ASPX postback, needs a dedicated client — deferred.
+- Yohananof, Osher Ad, Stop Market, Salach Dabach, Politzer: reachable via
+  Cerberus but **no Tel Aviv branches** (or none with live files).
+
 > The TLS chain on publishedprices omits an intermediate cert; `truststore`
 > (in requirements) lets Python use the OS trust store to verify it.
 

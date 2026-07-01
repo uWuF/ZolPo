@@ -6,8 +6,15 @@
 (function () {
   const { I18N, LANG_CYCLE, LANG_LABELS, translitHe, translateProductName, BRAND_MAP, api } = window.ZP;
 
-  const CHAIN_COLOR = { shufersal: '#e11d48', rami_levy: '#2563eb' };
-  const CHAIN_ORDER = ['shufersal', 'rami_levy'];
+  const CHAIN_COLOR = {
+    shufersal: '#e11d48',   // rose
+    rami_levy: '#2563eb',   // blue
+    carrefour: '#0ea5e9',   // sky
+    dor_alon:  '#f59e0b',   // amber (AM:PM)
+    yellow:    '#eab308',   // yellow (Paz)
+    keshet:    '#8b5cf6',   // violet
+  };
+  const CHAIN_ORDER = ['shufersal', 'rami_levy', 'carrefour', 'dor_alon', 'yellow', 'keshet'];
   const FORMAT_ORDER = ['Sheli (supermarket)', 'Deal (hypermarket)',
                         'Express (convenience)', 'Be (drugstore)'];
   const STORE_KEY = 'zolpo-stores-v2';   // v2: stores universal keys, not bare store_ids
@@ -149,7 +156,10 @@
         this._persist();
       },
       selectFood() {
-        this.selectedIds = this.stores.filter(s => /Sheli|Deal|Rami/.test(s.format_en || '')).map(s => s.key);
+        // Full-range food stores only (drops convenience/drugstore formats).
+        this.selectedIds = this.stores
+          .filter(s => /supermarket|hypermarket/i.test(s.format_en || ''))
+          .map(s => s.key);
         this._persist();
       },
       selectAllStores() { this.selectedIds = this.stores.map(s => s.key); this._persist(); },

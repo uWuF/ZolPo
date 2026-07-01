@@ -93,9 +93,12 @@ def _store_field(filename: str) -> str | None:
 
 
 def newest_pricefull_name(names: list[str], store_id: str) -> str | None:
-    sid = str(store_id)
+    # Zero-padding differs between the Stores directory and the price filenames
+    # (e.g. directory "19" vs file "019"), so compare both sides stripped.
+    sid = str(store_id).lstrip("0")
     cands = [n for n in names
-             if n.lower().startswith("pricefull") and _store_field(n) in (sid, sid.lstrip("0"))]
+             if n.lower().startswith("pricefull")
+             and (_store_field(n) or "").lstrip("0") == sid]
     return sorted(cands)[-1] if cands else None
 
 
