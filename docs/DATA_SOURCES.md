@@ -59,6 +59,21 @@ Stores directory — **Tel Aviv-Yafo = 5000**.
   overnight, so `ingest/publishprice.py` merges the last two days.
 - 23 Tel Aviv branches.
 
+### King Store / Good Pharm / Super Bareket — Bina portal (no login)
+- `http://<prefix>.binaprojects.com/` — `MainIO_Hok.aspx?WFileType=<t>` returns a
+  JSON file listing (1=Stores, 4=PriceFull, 5=PromoFull); `Download.aspx?FileNm=`
+  returns `[{SPath: real-url}]`. Payloads are ZIP despite the `.gz` extension.
+- Prefixes: `kingstore` (2 TA stores), `goodpharm` (17), `superbareket` (2).
+- Downloader: `ingest/bina.py`. Other Bina chains (Zol VeBegadol, Super Sapir,
+  Maayan 2000, Shuk HaIr, Shefa …) have **no Tel Aviv branches**.
+
+### Promotions (all portals)
+Every portal also publishes `PromoFull` per store (Shufersal `catID=4`, Cerberus
+and Bina by file prefix, PublishPrice from the same folder listing).
+`ingest/promos.py` + `scripts/promos.py` download and load them into
+`promos`/`promo_items`; the API serves only promos whose `end_date` hasn't
+passed, and `/api/search?deals=1` filters to promoted products.
+
 ### Probed and currently unavailable (state as of 2026-07-02)
 - **Tiv Taam** (`TivTaam`) and **Cofix** (`SuperCofixApp`): Cerberus login works
   but the portals hold **no PriceFull files** at all right now.
@@ -66,8 +81,10 @@ Stores directory — **Tel Aviv-Yafo = 5000**.
   live file. A `CHAINS` entry exists; re-run `build_registry.py keshet` later.
 - **Super Yuda** (`yuda_ho`) / **Fresh Market** (`freshmarket`): Cerberus, but no
   usable Stores directory (files nested in a folder / directory missing).
-- **Victory / Machsanei HaShuk** (Matrix portal `laibcatalog.co.il`): the file
-  table renders via ASPX postback, needs a dedicated client — deferred.
+- **Victory** (`laibcatalog.co.il` JSON API `/webapi/api/getbranches`): API works
+  but the branch list has **no Tel Aviv location** — nothing to add.
+- **Super-Pharm** (own paginated portal): drugstore segment already covered by
+  Good Pharm + Shufersal Be; dedicated client deferred.
 - Yohananof, Osher Ad, Stop Market, Salach Dabach, Politzer: reachable via
   Cerberus but **no Tel Aviv branches** (or none with live files).
 

@@ -3,10 +3,11 @@
 Real-time **Israeli supermarket price comparison**. Compare the *same product*
 across stores and chains using Israel's open government price-transparency data.
 
-The prototype covers **Tel Aviv-Yafo** with **105 stores across 5 chains**:
-33 Shufersal (Sheli, Deal, Express, Be), 4 Rami Levy, 32 AM:PM, 13 Yellow (Paz)
-and 23 Carrefour — and is built to scale to more chains and cities by adding
-one config entry + (sometimes) one downloader.
+The prototype covers **Tel Aviv-Yafo** with **126 stores across 8 chains**:
+33 Shufersal (Sheli, Deal, Express, Be), 4 Rami Levy, 32 AM:PM, 13 Yellow (Paz),
+23 Carrefour, 2 King Store, 17 Good Pharm and 2 Super Bareket — plus active
+**promotions** for every store. Built to scale to more chains and cities by
+adding one config entry + (sometimes) one downloader.
 
 ```
 ┌─────────────┐   download    ┌──────────┐  ingest   ┌──────────┐   API    ┌──────────┐
@@ -35,7 +36,9 @@ auto-loads whatever is already in `data/dumps/`.
 cd backend
 .venv312/bin/python scripts/download.py        # pull newest price files (all chains)
 .venv312/bin/python scripts/ingest.py          # load them into zolpo.db
+.venv312/bin/python scripts/promos.py          # promotions for every store
 .venv312/bin/python scripts/resolve_images.py --only-missing  # images for new barcodes
+.venv312/bin/python scripts/off_images.py      # Open Food Facts pass (international barcodes)
 .venv312/bin/python scripts/translate_names.py --run          # EN names (needs Claude auth)
 .venv312/bin/python scripts/compat_report.py   # cross-chain barcode/name compatibility
 ```

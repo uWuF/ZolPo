@@ -41,12 +41,14 @@ command never has to change.
 
 | Module            | Responsibility |
 |-------------------|----------------|
-| `shufersal.py`    | Download from Shufersal's open portal. |
+| `shufersal.py`    | Download from Shufersal's open portal (catID 2 = prices, 4 = promos). |
 | `cerberus.py`     | Login + download from the shared `publishedprices.co.il` portal (Rami Levy, AM:PM/Dor Alon, Yellow …). |
 | `publishprice.py` | Download from the PublishPrice portal family (Carrefour). |
+| `bina.py`         | Download from the Bina portal family (King Store, Good Pharm, Bareket). |
 | `directory.py`    | Build Tel Aviv registry entries from a chain's Stores directory (portal-agnostic core + per-portal builders). |
 | `geocode.py`      | Address → lat/lon (Nominatim → Photon → ZIP fallback). |
 | `loader.py`       | Parse `PriceFull` XML → DB, for every registry store of any chain. |
+| `promos.py`       | Download + parse `PromoFull` → promos / promo_items. |
 
 ## The two keys that make it scale
 
@@ -64,6 +66,8 @@ products     (item_code PK, item_name, manufacture_name, category)          -- f
 product_meta (item_code PK, item_name_en, image_url, image_source, enriched) -- derived; SURVIVES re-ingest
 stores       (chain_id, store_id, store_name, city, address,  PK(chain_id, store_id))
 prices       (item_code, chain_id, store_id, price, update_date,  PK(item_code, chain_id, store_id))
+promos       (chain_id, store_id, promo_id, description, end_date, min_qty, price,  PK(chain,store,promo))
+promo_items  (chain_id, store_id, promo_id, item_code,  PK(chain,store,promo,item))
 ```
 
 The `products` / `product_meta` split is deliberate lifecycle separation:
