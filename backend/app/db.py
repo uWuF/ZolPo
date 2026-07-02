@@ -89,6 +89,7 @@ def init_db() -> None:
                 end_date    TEXT,               -- 'YYYY-MM-DD'
                 min_qty     REAL,
                 price       REAL,               -- discounted total, if published
+                kind        TEXT,               -- one_plus_one/x_for_y/percent_off/fixed_price/club/other
                 PRIMARY KEY (chain_id, store_id, promo_id)
             );
 
@@ -107,6 +108,14 @@ def init_db() -> None:
             """
         )
         _migrate_meta(conn)
+        _migrate_promo_kind(conn)
+
+
+def _migrate_promo_kind(conn) -> None:
+    """Add promos.kind on DBs created before promo classification existed."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(promos)")}
+    if cols and "kind" not in cols:
+        conn.execute("ALTER TABLE promos ADD COLUMN kind TEXT")
 
 
 def _migrate_meta(conn) -> None:
@@ -141,14 +150,17 @@ def db_is_empty() -> bool:
 # --------------------------------------------------------------------------- #
 
 def upsert_product(conn, item_code, item_name, manufacture_name, category):
+    # First non-empty value wins: chains load in registry order (Shufersal
+    # first, with the best names), and a later chain's empty <ItemNm> must
+    # never blank out a good name (that's how 5k products lost theirs once).
     conn.execute(
         """
         INSERT INTO products (item_code, item_name, manufacture_name, category)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(item_code) DO UPDATE SET
-            item_name        = excluded.item_name,
-            manufacture_name = COALESCE(excluded.manufacture_name, products.manufacture_name),
-            category         = COALESCE(excluded.category, products.category)
+            item_name        = COALESCE(NULLIF(products.item_name, ''), excluded.item_name),
+            manufacture_name = COALESCE(NULLIF(products.manufacture_name, ''), excluded.manufacture_name),
+            category         = COALESCE(NULLIF(products.category, ''), excluded.category)
         """,
         (item_code, item_name, manufacture_name, category),
     )

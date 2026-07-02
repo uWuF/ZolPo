@@ -96,6 +96,21 @@ class NewPortalHelpers(unittest.TestCase):
         self.assertEqual(sp_field("Stores7290172900007-000-20260702-070014.gz"), "")
 
 
+class ClassifyPromo(unittest.TestCase):
+    def test_kinds(self):
+        from ingest.promos import classify_promo
+        self.assertEqual(classify_promo("מבצע 1+1", None, None), "one_plus_one")
+        self.assertEqual(classify_promo("דבש מתנה", None, None), "one_plus_one")
+        self.assertEqual(classify_promo("2 ב- 30.00", 2, 30.0), "x_for_y")
+        self.assertEqual(classify_promo("3ב20", None, None), "x_for_y")
+        self.assertEqual(classify_promo("מוצרי טרה ב-5% הנחה", None, None), "percent_off")
+        self.assertEqual(classify_promo("השני ב-50%", None, None), "percent_off")
+        self.assertEqual(classify_promo("שימורים ב- 17.90", None, None), "fixed_price")
+        self.assertEqual(classify_promo("גאודה", 1, 12.5), "fixed_price")
+        self.assertEqual(classify_promo("לחברי מועדון בלבד", None, None), "club")
+        self.assertEqual(classify_promo("פיצוי משקאות", None, None), "other")
+
+
 class ParseKeys(unittest.TestCase):
     def test_valid_and_malformed(self):
         self.assertEqual(

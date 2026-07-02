@@ -4,7 +4,13 @@
 // (e.g. "1:11" = Shufersal 11, "2:733" = Rami Levy 733). This is what lets the
 // same store number live in two chains without colliding.
 (function () {
-  const { I18N, LANG_CYCLE, LANG_LABELS, translitHe, translateProductName, BRAND_MAP, api } = window.ZP;
+  const { I18N, LANG_CYCLE, LANG_LABELS, translitHe, translateProductName,
+          translatePromo, BRAND_MAP, api } = window.ZP;
+
+  // Deal-type filter chips (order = display order). Colors echo the badge tint.
+  const DEAL_KINDS = ['one_plus_one', 'x_for_y', 'percent_off', 'fixed_price', 'club', 'other'];
+  const KIND_ICON = { one_plus_one: '🎁', x_for_y: '🧺', percent_off: '％',
+                      fixed_price: '🏷️', club: '💳', other: '✨' };
 
   const CHAIN_COLOR = {
     shufersal: '#e11d48',   // rose
@@ -38,6 +44,8 @@
       selectedIds:    [],     // universal store keys; filled in loadStores()
       marketsOpen:    false,
       dealsOnly:      false,  // 🏷️ filter: only products with an active promo
+      dealKind:       '',     // '' = all kinds; else one of DEAL_KINDS
+      openPromoCode:  null,   // product whose promo panel is expanded
       loading:        true,
       cart:           {},
       lang:           localStorage.getItem('zolpo-lang') || 'en',
@@ -126,30 +134,69 @@
 
       async search() {
         this.loading = true;
+        this.openPromoCode = null;
         try {
-          const data = await api.search(this.query, this.selectedIds, this.dealsOnly);
+          const data = await api.search(this.query, this.selectedIds, this.dealsOnly, this.dealKind);
           this.products = data.results || [];
         } catch (e) { console.error('search failed', e); this.products = []; }
         finally { this.loading = false; }
       },
-      toggleDeals() { this.dealsOnly = !this.dealsOnly; this.search(); },
+      toggleDeals() {
+        this.dealsOnly = !this.dealsOnly;
+        if (!this.dealsOnly) this.dealKind = '';
+        this.search();
+      },
 
       // ── promos ───────────────────────────────────────────────────────────
-      promoFor(p, key) { return (p.promos || {})[key] || null; },
-      // The deal line shown on the card: cheapest active promo among visible stores.
+      // p.promos = { storeKey: [ {text, qty, price, end, kind}, … best-first ] }
+      dealKinds() { return DEAL_KINDS; },
+      kindIcon(k) { return KIND_ICON[k] || '🏷️'; },
+      kindLabel(k) { return this.t('kind_' + k); },
+      setDealKind(k) { this.dealKind = this.dealKind === k ? '' : k; this.search(); },
+
+      promoFor(p, key) { return (p.promos || {})[key] || []; },
+      // The one-line teaser on the card: cheapest promo among visible stores.
       cardPromo(p) {
         let best = null;
         for (const s of this.visibleStores()) {
-          const pr = this.promoFor(p, s.key);
+          const pr = this.promoFor(p, s.key)[0];
           if (pr && (!best || (pr.price != null && (best.price == null || pr.price < best.price)))) best = pr;
         }
         return best;
       },
+      promoCount(p) {
+        return this.visibleStores().reduce((n, s) => n + this.promoFor(p, s.key).length, 0);
+      },
+      // Stores (among the visible ones) that have promos for this product,
+      // with their full deal lists — feeds the expandable panel.
+      promoStores(p) {
+        return this.visibleStores()
+          .map(s => ({ store: s, list: this.promoFor(p, s.key) }))
+          .filter(e => e.list.length);
+      },
+      togglePromoPanel(p) {
+        this.openPromoCode = this.openPromoCode === p.item_code ? null : p.item_code;
+      },
+      promoText(pr) {
+        if (!pr) return '';
+        return this.lang === 'en' ? translatePromo(pr.text || '') : (pr.text || '');
+      },
+      promoUntilText(pr) {
+        if (!pr || !pr.end) return '';
+        return `${this.t('promoUntil')} ${pr.end.slice(5).split('-').reverse().join('.')}`;
+      },
       promoLabel(pr) {
         if (!pr) return '';
-        let txt = pr.text || '';
-        if (pr.end) txt += ` · ${this.t('promoUntil')} ${pr.end.slice(5).split('-').reverse().join('.')}`;
+        let txt = this.promoText(pr);
+        if (pr.end) txt += ` · ${this.promoUntilText(pr)}`;
         return txt;
+      },
+      // Meta line under a deal: min quantity / deal price, when published.
+      promoMeta(pr) {
+        const bits = [];
+        if (pr.qty && pr.qty > 1) bits.push(`${this.t('minQty')} ${Math.round(pr.qty)}`);
+        if (pr.price != null) bits.push(`₪${pr.price.toFixed(2)}`);
+        return bits.join(' · ');
       },
 
       // ── markets selector ─────────────────────────────────────────────────

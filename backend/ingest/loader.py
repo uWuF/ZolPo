@@ -70,7 +70,8 @@ def iter_items(path: str):
             price = float(price)
         except ValueError:
             continue
-        yield code, _text(it, "ItemName"), _text(it, "ManufactureName", "ManufacturerName"), price
+        # ItemNm is the Bina/City-Market spelling of ItemName.
+        yield code, _text(it, "ItemName", "ItemNm"), _text(it, "ManufactureName", "ManufacturerName"), price
 
 
 def ingest_registry(reset: bool = True) -> dict:

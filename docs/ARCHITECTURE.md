@@ -69,7 +69,7 @@ products     (item_code PK, item_name, manufacture_name, category)          -- f
 product_meta (item_code PK, item_name_en, image_url, image_source, enriched) -- derived; SURVIVES re-ingest
 stores       (chain_id, store_id, store_name, city, address,  PK(chain_id, store_id))
 prices       (item_code, chain_id, store_id, price, update_date,  PK(item_code, chain_id, store_id))
-promos       (chain_id, store_id, promo_id, description, end_date, min_qty, price,  PK(chain,store,promo))
+promos       (chain_id, store_id, promo_id, description, end_date, min_qty, price, kind,  PK(chain,store,promo))
 promo_items  (chain_id, store_id, promo_id, item_code,  PK(chain,store,promo,item))
 ```
 

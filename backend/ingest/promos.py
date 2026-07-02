@@ -23,6 +23,7 @@ import datetime as _dt
 import glob
 import gzip
 import os
+import re
 import xml.etree.ElementTree as ET
 
 from app.config import CHAINS, dump_dir
@@ -46,6 +47,36 @@ def _num(s: str) -> float | None:
         return float(s)
     except (TypeError, ValueError):
         return None
+
+
+_RE_PLUS = re.compile(r"\d\s*\+\s*\d")                      # 1+1, 2+1
+_RE_X_FOR_Y = re.compile(r"\d+\s*(?:יח'?|יחידות)?\s*ב\s*-?\s*\d+")  # 2 ב-30, 3ב20
+_RE_PERCENT = re.compile(r"\d+(?:\.\d+)?\s*%")
+_RE_B_PRICE = re.compile(r"ב\s*-?\s*\d+(?:\.\d+)?")         # "שימורים ב- 17.90"
+
+
+def classify_promo(desc: str, min_qty, price, rate=None) -> str:
+    """
+    Bucket a promo into one of the UI-filterable kinds:
+    one_plus_one / x_for_y / percent_off / fixed_price / club / other.
+    Description patterns win; MinQty/DiscountedPrice/DiscountRate break ties.
+    """
+    d = desc or ""
+    if "מועדון" in d or "לחברי" in d:
+        return "club"
+    if _RE_PLUS.search(d) or "מתנה" in d or "חינם" in d:
+        return "one_plus_one"
+    if _RE_X_FOR_Y.search(d):
+        return "x_for_y"
+    if _RE_PERCENT.search(d) or "השני ב" in d or "חצי מחיר" in d:
+        return "percent_off"
+    if min_qty and min_qty >= 2 and price:
+        return "x_for_y"
+    if price or _RE_B_PRICE.search(d):
+        return "fixed_price"
+    if "הנחה" in d or (rate and rate > 0):
+        return "percent_off"
+    return "other"
 
 
 def _iter_items(promo):
@@ -80,14 +111,18 @@ def iter_promos(path: str):
         ]
         if not codes:
             continue
+        min_qty = _num(_text(p, "MinQty", "MinNoOfItemOffered", "MinNoOfItemsOffered"))
+        price = _num(_text(p, "DiscountedPrice"))
+        rate = _num(_text(p, "DiscountRate"))
         yield (
             promo_id,
             desc,
             # PromotionEndDateTime is the Shufersal-family spelling; [:10] trims
             # the ISO datetime down to the date either way.
             end,
-            _num(_text(p, "MinQty", "MinNoOfItemOffered", "MinNoOfItemsOffered")),
-            _num(_text(p, "DiscountedPrice")),
+            min_qty,
+            price,
+            classify_promo(desc, min_qty, price, rate),
             codes,
         )
 
@@ -174,10 +209,10 @@ def ingest_promos() -> dict:
                 continue
             conn.execute("DELETE FROM promos WHERE chain_id=? AND store_id=?", (chain_int, sid))
             conn.execute("DELETE FROM promo_items WHERE chain_id=? AND store_id=?", (chain_int, sid))
-            for promo_id, desc, end, qty, price, codes in iter_promos(path):
+            for promo_id, desc, end, qty, price, kind, codes in iter_promos(path):
                 conn.execute(
-                    "INSERT OR REPLACE INTO promos VALUES (?,?,?,?,?,?,?)",
-                    (chain_int, sid, promo_id, desc, end, qty, price),
+                    "INSERT OR REPLACE INTO promos VALUES (?,?,?,?,?,?,?,?)",
+                    (chain_int, sid, promo_id, desc, end, qty, price, kind),
                 )
                 conn.executemany(
                     "INSERT OR IGNORE INTO promo_items VALUES (?,?,?,?)",

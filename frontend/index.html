@@ -8,14 +8,14 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Bump ?v= when shipping asset changes: busts the browser heuristic cache. -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=6" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=12" />
   <link rel="manifest" href='data:application/manifest+json,{"name":"ZolPo","short_name":"ZolPo","start_url":"/","display":"standalone","background_color":"%23f8fafc","theme_color":"%23f8fafc"}' />
 
   <!-- App modules (order matters: helpers define window.ZP before app.js reads it). -->
-  <script src="/assets/js/translit.js?v=6"></script>
-  <script src="/assets/js/i18n.js?v=6"></script>
-  <script src="/assets/js/api.js?v=6"></script>
-  <script src="/assets/js/app.js?v=6"></script>
+  <script src="/assets/js/translit.js?v=12"></script>
+  <script src="/assets/js/i18n.js?v=12"></script>
+  <script src="/assets/js/api.js?v=12"></script>
+  <script src="/assets/js/app.js?v=12"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 
@@ -129,6 +129,27 @@
         </button>
       </div>
 
+      <!-- Deal-type chips (visible in Deals mode) -->
+      <div x-show="dealsOnly" x-transition.opacity x-cloak
+           class="mt-2 flex gap-1.5 overflow-x-auto pb-0.5" role="group" :aria-label="t('deals')">
+        <button @click="setDealKind('')"
+                class="shrink-0 px-2.5 py-1 rounded-full border text-xs font-semibold transition select-none"
+                :class="dealKind === ''
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-400'"
+                x-text="t('dealsAll')"></button>
+        <template x-for="k in dealKinds()" :key="k">
+          <button @click="setDealKind(k)" :aria-pressed="dealKind === k"
+                  class="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-semibold transition select-none"
+                  :class="dealKind === k
+                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-400'">
+            <span aria-hidden="true" x-text="kindIcon(k)"></span>
+            <span x-text="kindLabel(k)"></span>
+          </button>
+        </template>
+      </div>
+
       <!-- Last price update -->
       <div x-show="lastUpdate" class="mt-2 flex items-center gap-1.5 text-xs text-slate-400"
            :class="lang === 'he' ? 'flex-row-reverse' : ''">
@@ -176,11 +197,51 @@
             <h3 class="text-sm font-semibold leading-snug line-clamp-2 min-h-[2.5rem]"
                 :class="lang === 'he' || !p.item_name_en ? 'he' : ''" x-text="productName(p)"></h3>
 
-            <!-- Active promo (cheapest across visible stores) -->
-            <p x-show="cardPromo(p)" x-cloak dir="rtl"
-               class="he mt-1 text-[11px] leading-snug text-amber-700 bg-amber-50 border border-amber-200
-                      rounded-lg px-2 py-1 truncate"
-               :title="promoLabel(cardPromo(p))" x-text="promoLabel(cardPromo(p))"></p>
+            <!-- Deals: teaser line (best across visible stores) + expandable panel -->
+            <div x-show="cardPromo(p)" x-cloak class="mt-1">
+              <button @click="togglePromoPanel(p)" :aria-expanded="openPromoCode === p.item_code"
+                      class="w-full flex items-center gap-1 text-[11px] leading-snug text-amber-700
+                             bg-amber-50 border border-amber-200 rounded-lg px-2 py-1
+                             hover:bg-amber-100 active:scale-[0.99] transition text-start">
+                <span class="truncate flex-1" :class="lang === 'he' || !cardPromo(p) ? 'he' : ''"
+                      :dir="lang === 'he' ? 'rtl' : 'auto'"
+                      :title="promoLabel(cardPromo(p))" x-text="promoLabel(cardPromo(p))"></span>
+                <span x-show="promoCount(p) > 1" class="shrink-0 px-1 rounded-md bg-amber-200/80 font-bold"
+                      x-text="'+' + (promoCount(p) - 1)"></span>
+                <svg class="w-3 h-3 shrink-0 transition-transform"
+                     :class="openPromoCode === p.item_code ? 'rotate-180' : ''"
+                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+
+              <!-- All active deals for this product, grouped by store -->
+              <div x-show="openPromoCode === p.item_code" x-transition.opacity x-cloak
+                   class="mt-1 rounded-lg border border-amber-200 bg-amber-50/70 divide-y divide-amber-100
+                          max-h-44 overflow-auto">
+                <template x-for="e in promoStores(p)" :key="e.store.key">
+                  <div class="px-2 py-1.5">
+                    <p class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      <span class="chain-dot" :style="`--chain-color:${chainColor(e.store)}`"></span>
+                      <span class="truncate" :class="lang === 'he' ? 'he' : ''" x-text="storeLabel(e.store)"></span>
+                      <span class="ms-auto font-normal normal-case text-slate-400"
+                            x-show="e.list.length > 1" x-text="'×' + e.list.length"></span>
+                    </p>
+                    <template x-for="(pr, j) in e.list" :key="j">
+                      <div class="mt-1 flex items-start gap-1.5 text-[11px] text-amber-800">
+                        <span class="shrink-0" :title="kindLabel(pr.kind)" x-text="kindIcon(pr.kind)"></span>
+                        <span class="min-w-0 flex-1">
+                          <span class="block leading-snug" :class="lang === 'he' ? 'he' : ''"
+                                :dir="lang === 'he' ? 'rtl' : 'auto'" x-text="promoText(pr)"></span>
+                          <span class="block text-[10px] text-slate-400"
+                                x-text="[promoMeta(pr), promoUntilText(pr)].filter(Boolean).join(' · ')"></span>
+                        </span>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
 
             <!-- One price row per selected market; chain colour dot + cheapest highlight. -->
             <div class="mt-2 space-y-1 text-sm">
@@ -192,8 +253,13 @@
                   <span class="flex items-center gap-1.5 min-w-0">
                     <span class="chain-dot" :style="`--chain-color:${chainColor(s)}`"></span>
                     <span class="truncate" :class="lang === 'he' ? 'he' : ''" x-text="storeLabel(s)"></span>
-                    <span x-show="promoFor(p, s.key)" x-cloak class="shrink-0 cursor-help"
-                          :title="promoLabel(promoFor(p, s.key))" aria-hidden="true">🏷️</span>
+                    <button x-show="promoFor(p, s.key).length" x-cloak
+                            @click="togglePromoPanel(p)" aria-label="deals"
+                            class="shrink-0 text-[10px] hover:scale-110 transition"
+                            :title="promoLabel(promoFor(p, s.key)[0])">
+                      <span aria-hidden="true"
+                            x-text="promoFor(p, s.key).length > 1 ? '🏷️×' + promoFor(p, s.key).length : '🏷️'"></span>
+                    </button>
                   </span>
                   <span class="shrink-0 ps-1"
                         x-text="p.prices[s.key] != null ? p.prices[s.key].toFixed(2) + ' ₪' : '—'"></span>

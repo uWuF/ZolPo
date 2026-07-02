@@ -10,9 +10,10 @@
     stores: () => getJSON('/api/stores'),
     meta: () => getJSON('/api/meta'),
     compat: () => getJSON('/api/compat'),
-    search: (q, storeKeys, deals) => {
+    search: (q, storeKeys, deals, kind) => {
       const stores = encodeURIComponent((storeKeys || []).join(','));
-      return getJSON(`/api/search?q=${encodeURIComponent(q || '')}&stores=${stores}&deals=${deals ? 1 : 0}`);
+      const k = deals && kind ? `&kind=${encodeURIComponent(kind)}` : '';
+      return getJSON(`/api/search?q=${encodeURIComponent(q || '')}&stores=${stores}&deals=${deals ? 1 : 0}${k}`);
     },
     enrich: (limit = 40) => getJSON(`/api/enrich?limit=${limit}`, { method: 'POST' }),
   };

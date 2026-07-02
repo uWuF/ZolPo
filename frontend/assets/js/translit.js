@@ -36,6 +36,14 @@
     'קליק': 'Klik', 'טורטית': 'Tortit', 'ערגליות': 'Argaliot',
     'מילקי': 'Milky', 'דניאלה': 'Daniella', 'יולו': 'Yolo', 'אקטימל': 'Actimel',
     'שוקולית': 'Shokolit', 'עוגיות': 'Cookies',
+    "בן אנד ג'ריס": "Ben & Jerry's", "בן & ג'ריס": "Ben & Jerry's",
+    "בנג'ריס": "Ben & Jerry's", "בן אנד ג`ריס": "Ben & Jerry's",
+    "בן אנד גריס": "Ben & Jerry's", "בנג׳ריס": "Ben & Jerry's",
+    "בן&ג'ריס": "Ben & Jerry's", "בן&גריס": "Ben & Jerry's",
+    'פיינט': 'Pint', 'פינט': 'Pint', 'גלידות': 'Ice Cream',
+    'האגן דאז': 'Häagen-Dazs', 'מגנום': 'Magnum', 'קרלו': 'Karlo',
+    'נסטלה': 'Nestlé', 'לוטוס': 'Lotus', 'קינדר': 'Kinder',
+    'פררו': 'Ferrero', 'רושה': 'Rocher', 'לינדט': 'Lindt',
     // international
     'קוקה קולה': 'Coca-Cola', 'פפסי': 'Pepsi', 'ספרייט': 'Sprite', 'פאנטה': 'Fanta',
     'שוופס': 'Schweppes', 'נסטלה': 'Nestlé', 'דנונה': 'Danone', 'יופלה': 'Yoplait',
@@ -213,20 +221,69 @@
     'מ"ל': 'ml', 'מל': 'ml', 'ליטר': 'L', 'ס"מ': 'cm',
   };
 
+  // Brands whose Hebrew form is 2+ words ("בן אנד ג'ריס") can't be matched by
+  // the word-window below — substitute them on the whole string first.
+  const LONG_BRANDS = Object.entries(BRAND_MAP).filter(([he]) => he.includes(' '));
+
+  function replaceLongBrands(str) {
+    for (const [he, en] of LONG_BRANDS) {
+      if (str.includes(he)) str = str.split(he).join(en);
+    }
+    return str;
+  }
+
   function translateProductName(str) {
     if (!str) return '';
     if (!/[א-ת]/.test(str)) return str; // already Latin
+    str = replaceLongBrands(str);
+    if (!/[א-ת]/.test(str)) return str;
     const words = str.trim().split(/\s+/);
     const out = [];
     for (let i = 0; i < words.length; i++) {
       const two = i + 1 < words.length ? words[i] + ' ' + words[i + 1] : null;
       if (two && PHRASE_MAP[two] !== undefined) { out.push(PHRASE_MAP[two]); i++; continue; }
-      const w = words[i], clean = w.replace(/[.,'"?!]$/, '');
+      // Strip punctuation and invisible RTL marks (U+200E/200F in gov data)
+      // from the edges so dictionary lookups match.
+      const w = words[i], clean = w.replace(/^[^\dA-Za-zא-ת']+|[^\dA-Za-zא-ת']+$/g, '');
       if (BRAND_MAP[clean] !== undefined) { out.push(BRAND_MAP[clean]); continue; }
       out.push(HE_WORD_EN[clean] ?? translitHe(w));
     }
     return out.join(' ').replace(/\s+/g, ' ').trim();
   }
 
-  window.ZP = Object.assign(window.ZP || {}, { translitHe, translateProductName, BRAND_MAP });
+  // ── Promo descriptions ────────────────────────────────────────────────────
+  // Deal texts are formulaic ("2 ב- 20.00", "מוצרי טרה ב-5% הנחה", "1+1"), so a
+  // pattern pass converts the structure and the word pipeline above handles the
+  // product words that remain.
+  const PROMO_PATTERNS = [
+    [/(\d+)\s*(?:יח'?|יחידות)\s*ב\s*-?\s*(\d+(?:\.\d+)?)/g, '$1 for ₪$2'],
+    [/(\d+)\s*ב\s*-?\s*(\d+(?:\.\d+)?)/g, '$1 for ₪$2'],
+    [/ב\s*-\s*(\d+(?:\.\d+)?)\s*(?:ש"?ח|₪)/g, 'for ₪$1'],
+    [/(\d+(?:\.\d+)?)\s*ש"?ח\s*הנחה/g, '₪$1 off'],
+    [/(\d+(?:\.\d+)?)\s*%\s*הנחה/g, '$1% off'],
+    [/הנחה\s*(\d+(?:\.\d+)?)\s*%/g, '$1% off'],
+    [/השניי?ה?\s*ב\s*-?\s*(\d+(?:\.\d+)?)\s*%/g, '2nd at $1%'],
+    [/השניי?ה?\s*ב\s*-?\s*(\d+(?:\.\d+)?)/g, '2nd for ₪$1'],
+    [/חצי\s*מחיר/g, 'half price'],
+    [/(\d+)\s*\+\s*(\d+)\s*מתנה/g, '$1+$2 free'],
+    [/מתנה/g, 'free'], [/חינם/g, 'free'],
+    [/לחברי\s*מועדון/g, 'club members'], [/מועדון/g, 'club'],
+    [/מוצרי/g, 'all'], [/הנחה/g, 'off'], [/מבצע/g, 'deal'],
+    [/בקניית/g, 'when buying'], [/בקניה\s*מעל/g, 'on orders over'],
+    [/ש"?ח/g, '₪'], [/יחידות/g, 'units'], [/יח'?/g, 'pcs'],
+  ];
+
+  function translatePromo(str) {
+    if (!str) return '';
+    if (!/[א-ת]/.test(str)) return str;
+    let s = replaceLongBrands(str);
+    for (const [re, sub] of PROMO_PATTERNS) s = s.replace(re, sub);
+    // whatever Hebrew remains is product/brand words — reuse the name pipeline
+    return s.split(/\s+/)
+            .map(w => (/[א-ת]/.test(w) ? translateProductName(w) : w))
+            .join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  window.ZP = Object.assign(window.ZP || {},
+    { translitHe, translateProductName, translatePromo, BRAND_MAP });
 })();

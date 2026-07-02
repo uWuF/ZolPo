@@ -80,22 +80,24 @@ def _attach_prices(conn, rows, pairs) -> list[dict]:
         promo_rows = conn.execute(
             f"""
             SELECT pi.item_code, pi.chain_id, pi.store_id,
-                   p.description, p.min_qty, p.price, p.end_date
+                   p.description, p.min_qty, p.price, p.end_date, p.kind
             FROM promo_items pi
             JOIN promos p ON p.chain_id = pi.chain_id AND p.store_id = pi.store_id
                          AND p.promo_id = pi.promo_id
             WHERE pi.item_code IN ({placeholders}){promo_filter}
               AND (p.end_date IS NULL OR p.end_date = '' OR p.end_date >= date('now'))
-            ORDER BY p.price IS NULL, p.price
+            ORDER BY p.price IS NULL, p.price, p.end_date
             """,
             (*codes, *tuple_params),
         )
-        for pr in promo_rows:  # first (cheapest) promo per (product, store) wins
+        # ALL active promos per (product, store), best (cheapest) first — a
+        # product can carry several deals in one store and different deals in
+        # different stores; the frontend renders the full list in a panel.
+        for pr in promo_rows:
             key = f"{pr['chain_id']}:{pr['store_id']}"
-            slot = promos_by_code[pr["item_code"]]
-            if key not in slot:
-                slot[key] = {"text": pr["description"], "qty": pr["min_qty"],
-                             "price": pr["price"], "end": pr["end_date"]}
+            promos_by_code[pr["item_code"]].setdefault(key, []).append(
+                {"text": pr["description"], "qty": pr["min_qty"],
+                 "price": pr["price"], "end": pr["end_date"], "kind": pr["kind"]})
 
     return [
         {
@@ -112,9 +114,13 @@ def _attach_prices(conn, rows, pairs) -> list[dict]:
     ]
 
 
+PROMO_KINDS = {"one_plus_one", "x_for_y", "percent_off", "fixed_price", "club", "other"}
+
+
 def search_products(term: str, limit: int = 60, store_keys: list[str] | None = None,
-                    deals_only: bool = False) -> list[dict]:
+                    deals_only: bool = False, deal_kind: str = "") -> list[dict]:
     term = (term or "").strip()
+    deal_kind = deal_kind if deal_kind in PROMO_KINDS else ""
     pairs = _parse_keys(store_keys)
     tuple_clause, tuple_params = _tuple_filter(pairs)
 
@@ -140,15 +146,18 @@ def search_products(term: str, limit: int = 60, store_keys: list[str] | None = N
         params += tuple_params
     if deals_only:
         promo_scope = f" AND (pi.chain_id, pi.store_id) IN {tuple_clause}" if pairs else ""
+        kind_cond = " AND pm.kind = ?" if deal_kind else ""
         where.append(
             "EXISTS (SELECT 1 FROM promo_items pi "
             "JOIN promos pm ON pm.chain_id = pi.chain_id AND pm.store_id = pi.store_id "
             "AND pm.promo_id = pi.promo_id "
             f"WHERE pi.item_code = p.item_code{promo_scope} "
-            "AND (pm.end_date IS NULL OR pm.end_date = '' OR pm.end_date >= date('now')))"
+            f"AND (pm.end_date IS NULL OR pm.end_date = '' OR pm.end_date >= date('now')){kind_cond})"
         )
         if pairs:
             params += tuple_params
+        if deal_kind:
+            params.append(deal_kind)
 
     sql = _PRODUCT_SELECT
     if where:
