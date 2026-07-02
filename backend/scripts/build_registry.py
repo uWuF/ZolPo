@@ -15,11 +15,14 @@ import os
 import sys
 
 from app.config import CHAINS, REGISTRY_PATH, BACKEND_DIR, store_key
-from ingest.directory import build_tel_aviv_registry, build_tel_aviv_registry_publishprice
+from ingest.directory import (build_tel_aviv_registry,
+                              build_tel_aviv_registry_bina,
+                              build_tel_aviv_registry_publishprice)
 
 _BUILDERS = {
     "cerberus": build_tel_aviv_registry,
     "publishprice": build_tel_aviv_registry_publishprice,
+    "bina": build_tel_aviv_registry_bina,
 }
 
 LEGACY_PATH = os.path.join(BACKEND_DIR, "stores.json")  # pre-refactor location

@@ -28,7 +28,7 @@ from app.config import CHAINS, dump_dir
 from app.db import get_db, init_db
 from app import registry
 
-from . import publishprice, shufersal
+from . import bina, publishprice, shufersal
 from .cerberus import CerberusClient, download_store_file
 
 
@@ -107,6 +107,12 @@ def download_all() -> dict:
             for s in chain_stores:
                 p = publishprice.download_store_file(files, s["store_id"],
                                                      dump_dir(ck, s["store_id"]), "PromoFull")
+                stats["ok" if p else "missing"] += 1
+        elif portal == "bina":
+            names = bina.list_files(chain["bina_prefix"], "PromoFull")
+            for s in chain_stores:
+                p = bina.download_store_file(chain["bina_prefix"], s["store_id"],
+                                             dump_dir(ck, s["store_id"]), names, "PromoFull")
                 stats["ok" if p else "missing"] += 1
         else:  # shufersal
             for s in chain_stores:

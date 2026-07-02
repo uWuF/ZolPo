@@ -13,7 +13,7 @@ import sys
 
 from app.config import CHAINS, dump_dir
 from app import registry
-from ingest import publishprice, shufersal
+from ingest import bina, publishprice, shufersal
 from ingest.cerberus import CerberusClient, download_store_pricefull
 
 
@@ -39,6 +39,12 @@ def main(only: list[str]) -> None:
             files = publishprice.list_files(days_back=2)
             for s in targets:
                 p = publishprice.download_store_pricefull(files, s["store_id"], dump_dir(ck, s["store_id"]))
+                print(f"   {s['store_id']}: {'ok' if p else 'NO FILE'}")
+        elif chain["portal"] == "bina":
+            names = bina.list_files(chain["bina_prefix"], "PriceFull")
+            for s in targets:
+                p = bina.download_store_file(chain["bina_prefix"], s["store_id"],
+                                             dump_dir(ck, s["store_id"]), names)
                 print(f"   {s['store_id']}: {'ok' if p else 'NO FILE'}")
         else:  # shufersal open portal
             for s in targets:

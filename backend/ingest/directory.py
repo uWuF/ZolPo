@@ -187,3 +187,20 @@ def build_tel_aviv_registry_publishprice(chain_key: str, do_geocode: bool = True
             files, sid, dump_dir(chain_key, sid)),
         do_geocode=do_geocode,
     )
+
+
+def build_tel_aviv_registry_bina(chain_key: str, do_geocode: bool = True) -> list[dict]:
+    """Tel Aviv registry entries for a Bina chain (King Store, Good Pharm …)."""
+    from . import bina
+    from .cerberus import newest_file_name
+
+    prefix = CHAINS[chain_key]["bina_prefix"]
+    directory = parse_stores_directory(bina.fetch_stores_directory(prefix))
+    names = bina.list_files(prefix, "PriceFull")
+    return _build_entries(
+        chain_key, directory,
+        has_price=lambda sid: newest_file_name(names, sid, "pricefull"),
+        download=lambda sid: bina.download_store_file(
+            prefix, sid, dump_dir(chain_key, sid), names),
+        do_geocode=do_geocode,
+    )

@@ -12,9 +12,13 @@
     carrefour: '#0ea5e9',   // sky
     dor_alon:  '#f59e0b',   // amber (AM:PM)
     yellow:    '#eab308',   // yellow (Paz)
-    keshet:    '#8b5cf6',   // violet
+    keshet:     '#8b5cf6',  // violet
+    king_store: '#7c3aed',  // purple
+    good_pharm: '#14b8a6',  // teal
+    bareket:    '#f97316',  // orange
   };
-  const CHAIN_ORDER = ['shufersal', 'rami_levy', 'carrefour', 'dor_alon', 'yellow', 'keshet'];
+  const CHAIN_ORDER = ['shufersal', 'rami_levy', 'carrefour', 'dor_alon', 'yellow',
+                       'king_store', 'bareket', 'good_pharm', 'keshet'];
   const FORMAT_ORDER = ['Sheli (supermarket)', 'Deal (hypermarket)',
                         'Express (convenience)', 'Be (drugstore)'];
   const STORE_KEY = 'zolpo-stores-v2';   // v2: stores universal keys, not bare store_ids

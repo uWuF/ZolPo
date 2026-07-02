@@ -93,6 +93,36 @@ CHAINS = {
         "portal": "publishprice",
         "format_en": "Carrefour (supermarket)",
     },
+    "king_store": {
+        "key": "king_store",
+        "id": 7,
+        "chain_id_gov": "7290058108879",
+        "name_he": "קינג סטור",
+        "name_en": "King Store",
+        "portal": "bina",
+        "bina_prefix": "kingstore",
+        "format_en": "King Store (supermarket)",
+    },
+    "good_pharm": {
+        "key": "good_pharm",
+        "id": 8,
+        "chain_id_gov": "7290058197699",
+        "name_he": "גוד פארם",
+        "name_en": "Good Pharm",
+        "portal": "bina",
+        "bina_prefix": "goodpharm",
+        "format_en": "Good Pharm (drugstore)",
+    },
+    "bareket": {
+        "key": "bareket",
+        "id": 9,
+        "chain_id_gov": "7290875100001",
+        "name_he": "סופר ברקת",
+        "name_en": "Super Bareket",
+        "portal": "bina",
+        "bina_prefix": "superbareket",
+        "format_en": "Bareket (supermarket)",
+    },
 }
 
 CHAIN_BY_ID = {c["id"]: c for c in CHAINS.values()}
