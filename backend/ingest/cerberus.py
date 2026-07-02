@@ -92,21 +92,26 @@ def _store_field(filename: str) -> str | None:
     return None
 
 
-def newest_pricefull_name(names: list[str], store_id: str) -> str | None:
+def newest_file_name(names: list[str], store_id: str, prefix: str = "pricefull") -> str | None:
     # Zero-padding differs between the Stores directory and the price filenames
     # (e.g. directory "19" vs file "019"), so compare both sides stripped.
     sid = str(store_id).lstrip("0")
     cands = [n for n in names
-             if n.lower().startswith("pricefull")
+             if n.lower().startswith(prefix.lower())
              and (_store_field(n) or "").lstrip("0") == sid]
     return sorted(cands)[-1] if cands else None
 
 
-def download_store_pricefull(client: CerberusClient, store_id: str, out_dir: str,
-                             names: list[str] | None = None) -> str | None:
-    """Save the newest PriceFull for `store_id` into out_dir. Returns the path."""
-    names = names if names is not None else client.list_files("PriceFull")
-    name = newest_pricefull_name(names, store_id)
+def newest_pricefull_name(names: list[str], store_id: str) -> str | None:
+    return newest_file_name(names, store_id, "pricefull")
+
+
+def download_store_file(client: CerberusClient, store_id: str, out_dir: str,
+                        names: list[str] | None = None,
+                        prefix: str = "PriceFull") -> str | None:
+    """Save the newest <prefix> file for `store_id` into out_dir. Returns the path."""
+    names = names if names is not None else client.list_files(prefix)
+    name = newest_file_name(names, store_id, prefix)
     if not name:
         return None
     raw = client.download(name)
@@ -115,6 +120,11 @@ def download_store_pricefull(client: CerberusClient, store_id: str, out_dir: str
     with open(path, "wb") as f:
         f.write(raw)
     return path
+
+
+def download_store_pricefull(client: CerberusClient, store_id: str, out_dir: str,
+                             names: list[str] | None = None) -> str | None:
+    return download_store_file(client, store_id, out_dir, names, "PriceFull")
 
 
 def fetch_stores_directory(client: CerberusClient) -> bytes:

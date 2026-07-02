@@ -26,6 +26,7 @@
       stores:         [],
       selectedIds:    [],     // universal store keys; filled in loadStores()
       marketsOpen:    false,
+      dealsOnly:      false,  // 🏷️ filter: only products with an active promo
       loading:        true,
       cart:           {},
       lang:           localStorage.getItem('zolpo-lang') || 'en',
@@ -115,10 +116,29 @@
       async search() {
         this.loading = true;
         try {
-          const data = await api.search(this.query, this.selectedIds);
+          const data = await api.search(this.query, this.selectedIds, this.dealsOnly);
           this.products = data.results || [];
         } catch (e) { console.error('search failed', e); this.products = []; }
         finally { this.loading = false; }
+      },
+      toggleDeals() { this.dealsOnly = !this.dealsOnly; this.search(); },
+
+      // ── promos ───────────────────────────────────────────────────────────
+      promoFor(p, key) { return (p.promos || {})[key] || null; },
+      // The deal line shown on the card: cheapest active promo among visible stores.
+      cardPromo(p) {
+        let best = null;
+        for (const s of this.visibleStores()) {
+          const pr = this.promoFor(p, s.key);
+          if (pr && (!best || (pr.price != null && (best.price == null || pr.price < best.price)))) best = pr;
+        }
+        return best;
+      },
+      promoLabel(pr) {
+        if (!pr) return '';
+        let txt = pr.text || '';
+        if (pr.end) txt += ` · ${this.t('promoUntil')} ${pr.end.slice(5).split('-').reverse().join('.')}`;
+        return txt;
       },
 
       // ── markets selector ─────────────────────────────────────────────────

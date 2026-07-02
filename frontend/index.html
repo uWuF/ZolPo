@@ -8,14 +8,14 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Bump ?v= when shipping asset changes: busts the browser heuristic cache. -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=3" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=4" />
   <link rel="manifest" href='data:application/manifest+json,{"name":"ZolPo","short_name":"ZolPo","start_url":"/","display":"standalone","background_color":"%23f8fafc","theme_color":"%23f8fafc"}' />
 
   <!-- App modules (order matters: helpers define window.ZP before app.js reads it). -->
-  <script src="/assets/js/translit.js?v=3"></script>
-  <script src="/assets/js/i18n.js?v=3"></script>
-  <script src="/assets/js/api.js?v=3"></script>
-  <script src="/assets/js/app.js?v=3"></script>
+  <script src="/assets/js/translit.js?v=4"></script>
+  <script src="/assets/js/i18n.js?v=4"></script>
+  <script src="/assets/js/api.js?v=4"></script>
+  <script src="/assets/js/app.js?v=4"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 
@@ -104,17 +104,29 @@
         </div>
       </div>
 
-      <!-- Search bar -->
-      <div class="relative">
-        <svg class="absolute start-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 flip-icon"
-             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3" stroke-linecap="round"/>
-        </svg>
-        <input type="search" x-model="query" @input.debounce.300ms="search()"
-               :placeholder="t('searchPlaceholder')" :aria-label="t('searchPlaceholder')" dir="rtl"
-               class="w-full ps-11 pe-4 py-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm
-                      text-base placeholder:text-slate-400 focus:outline-none focus:ring-2
-                      focus:ring-emerald-400 focus:border-transparent transition" />
+      <!-- Search bar + deals filter -->
+      <div class="flex items-center gap-2">
+        <div class="relative flex-1">
+          <svg class="absolute start-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 flip-icon"
+               fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3" stroke-linecap="round"/>
+          </svg>
+          <input type="search" x-model="query" @input.debounce.300ms="search()"
+                 :placeholder="t('searchPlaceholder')" :aria-label="t('searchPlaceholder')" dir="rtl"
+                 class="w-full ps-11 pe-4 py-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm
+                        text-base placeholder:text-slate-400 focus:outline-none focus:ring-2
+                        focus:ring-emerald-400 focus:border-transparent transition" />
+        </div>
+        <!-- Deals-only toggle -->
+        <button @click="toggleDeals()" :aria-pressed="dealsOnly"
+                class="shrink-0 flex items-center gap-1.5 px-3 py-3 rounded-2xl border shadow-sm
+                       text-sm font-semibold active:scale-95 transition select-none"
+                :class="dealsOnly
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-400 hover:text-emerald-600'">
+          <span aria-hidden="true">🏷️</span>
+          <span x-text="t('deals')"></span>
+        </button>
       </div>
 
       <!-- Last price update -->
@@ -164,6 +176,12 @@
             <h3 class="text-sm font-semibold leading-snug line-clamp-2 min-h-[2.5rem]"
                 :class="lang === 'he' || !p.item_name_en ? 'he' : ''" x-text="productName(p)"></h3>
 
+            <!-- Active promo (cheapest across visible stores) -->
+            <p x-show="cardPromo(p)" x-cloak dir="rtl"
+               class="he mt-1 text-[11px] leading-snug text-amber-700 bg-amber-50 border border-amber-200
+                      rounded-lg px-2 py-1 truncate"
+               :title="promoLabel(cardPromo(p))" x-text="promoLabel(cardPromo(p))"></p>
+
             <!-- One price row per selected market; chain colour dot + cheapest highlight. -->
             <div class="mt-2 space-y-1 text-sm">
               <template x-for="s in visibleStores()" :key="s.key">
@@ -174,6 +192,8 @@
                   <span class="flex items-center gap-1.5 min-w-0">
                     <span class="chain-dot" :style="`--chain-color:${chainColor(s)}`"></span>
                     <span class="truncate" :class="lang === 'he' ? 'he' : ''" x-text="storeLabel(s)"></span>
+                    <span x-show="promoFor(p, s.key)" x-cloak class="shrink-0 cursor-help"
+                          :title="promoLabel(promoFor(p, s.key))" aria-hidden="true">🏷️</span>
                   </span>
                   <span class="shrink-0 ps-1"
                         x-text="p.prices[s.key] != null ? p.prices[s.key].toFixed(2) + ' ₪' : '—'"></span>

@@ -79,9 +79,31 @@ def init_db() -> None:
                 FOREIGN KEY (item_code) REFERENCES products(item_code)
             );
 
+            -- Promotions (PromoFull files). One row per promo per store; items
+            -- link via promo_items. Refreshed wholesale per store on ingest.
+            CREATE TABLE IF NOT EXISTS promos (
+                chain_id    INTEGER NOT NULL,
+                store_id    TEXT NOT NULL,
+                promo_id    TEXT NOT NULL,
+                description TEXT,
+                end_date    TEXT,               -- 'YYYY-MM-DD'
+                min_qty     REAL,
+                price       REAL,               -- discounted total, if published
+                PRIMARY KEY (chain_id, store_id, promo_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS promo_items (
+                chain_id  INTEGER NOT NULL,
+                store_id  TEXT NOT NULL,
+                promo_id  TEXT NOT NULL,
+                item_code TEXT NOT NULL,
+                PRIMARY KEY (chain_id, store_id, promo_id, item_code)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_products_name ON products(item_name);
             CREATE INDEX IF NOT EXISTS idx_prices_item   ON prices(item_code);
             CREATE INDEX IF NOT EXISTS idx_prices_store  ON prices(chain_id, store_id);
+            CREATE INDEX IF NOT EXISTS idx_promo_items_item ON promo_items(item_code);
             """
         )
         _migrate_meta(conn)

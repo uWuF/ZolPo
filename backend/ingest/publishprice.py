@@ -70,16 +70,21 @@ def fetch_stores_directory(files: dict[str, str]) -> bytes:
     return download(files, sorted(names)[-1])
 
 
-def newest_pricefull_name(files: dict[str, str], store_id: str) -> str | None:
+def newest_file_name(files: dict[str, str], store_id: str, prefix: str = "pricefull") -> str | None:
     sid = str(store_id).lstrip("0")
     cands = [n for n in files
-             if n.lower().startswith("pricefull")
+             if n.lower().startswith(prefix.lower())
              and (_store_field(n) or "").lstrip("0") == sid]
     return sorted(cands)[-1] if cands else None
 
 
-def download_store_pricefull(files: dict[str, str], store_id: str, out_dir: str) -> str | None:
-    name = newest_pricefull_name(files, store_id)
+def newest_pricefull_name(files: dict[str, str], store_id: str) -> str | None:
+    return newest_file_name(files, store_id, "pricefull")
+
+
+def download_store_file(files: dict[str, str], store_id: str, out_dir: str,
+                        prefix: str = "PriceFull") -> str | None:
+    name = newest_file_name(files, store_id, prefix)
     if not name:
         return None
     raw = download(files, name)
@@ -88,3 +93,7 @@ def download_store_pricefull(files: dict[str, str], store_id: str, out_dir: str)
     with open(path, "wb") as f:
         f.write(raw)
     return path
+
+
+def download_store_pricefull(files: dict[str, str], store_id: str, out_dir: str) -> str | None:
+    return download_store_file(files, store_id, out_dir, "PriceFull")

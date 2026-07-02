@@ -26,6 +26,8 @@
       foodMarkets:       'Supermarkets',
       allMarkets:        'All',
       comparable:        'comparable products across selected chains',
+      deals:             'Deals',
+      promoUntil:        'until',
     },
     he: {
       subtitle:          'תל אביב · מחירים חיים',
@@ -47,6 +49,8 @@
       foodMarkets:       'סופרמרקטים',
       allMarkets:        'הכל',
       comparable:        'מוצרים להשוואה בין הרשתות שנבחרו',
+      deals:             'מבצעים',
+      promoUntil:        'עד',
     },
   };
 

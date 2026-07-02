@@ -59,9 +59,11 @@ app.add_middleware(
 @app.get("/api/search")
 def api_search(q: str = Query("", description="name / brand / barcode"),
                limit: int = Query(60, ge=1, le=200),
-               stores: str = Query("", description="comma-separated universal store keys, e.g. 1:11,2:733")):
+               stores: str = Query("", description="comma-separated universal store keys, e.g. 1:11,2:733"),
+               deals: int = Query(0, description="1 = only products with an active promo in the selected stores")):
     keys = [s for s in stores.split(",") if s]
-    return {"query": q, "results": search.search_products(q, limit, keys)}
+    return {"query": q,
+            "results": search.search_products(q, limit, keys, deals_only=bool(deals))}
 
 
 @app.get("/api/product/{item_code}")

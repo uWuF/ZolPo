@@ -16,12 +16,15 @@ import requests
 PORTAL = "https://prices.shufersal.co.il/FileObject/UpdateCategory"
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh) ZolPo/1.0"}
 
+# Portal categories: 2 = PriceFull, 4 = PromoFull (1/3 are the incremental feeds).
+_CATEGORIES = {"PriceFull": 2, "PromoFull": 4}
 
-def download_store_pricefull(store_id: str, out_dir: str) -> str | None:
-    """Save the newest PriceFull for one Shufersal store into out_dir."""
-    r = requests.get(PORTAL, params={"catID": 2, "storeId": store_id},
+
+def download_store_file(store_id: str, out_dir: str, kind: str = "PriceFull") -> str | None:
+    """Save the newest PriceFull/PromoFull for one Shufersal store into out_dir."""
+    r = requests.get(PORTAL, params={"catID": _CATEGORIES[kind], "storeId": store_id},
                      headers=UA, timeout=40)
-    links = [html.unescape(l) for l in re.findall(r'href="([^"]+)"', r.text) if "PriceFull" in l]
+    links = [html.unescape(l) for l in re.findall(r'href="([^"]+)"', r.text) if kind in l]
     if not links:
         return None
     name_of = lambda u: u.split("?")[0].split("/")[-1]
@@ -35,3 +38,7 @@ def download_store_pricefull(store_id: str, out_dir: str) -> str | None:
     with open(path, "wb") as f:
         f.write(raw)
     return path
+
+
+def download_store_pricefull(store_id: str, out_dir: str) -> str | None:
+    return download_store_file(store_id, out_dir, "PriceFull")
