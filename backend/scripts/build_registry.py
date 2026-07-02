@@ -17,12 +17,18 @@ import sys
 from app.config import CHAINS, REGISTRY_PATH, BACKEND_DIR, store_key
 from ingest.directory import (build_tel_aviv_registry,
                               build_tel_aviv_registry_bina,
-                              build_tel_aviv_registry_publishprice)
+                              build_tel_aviv_registry_citymarket,
+                              build_tel_aviv_registry_publishprice,
+                              build_tel_aviv_registry_superpharm,
+                              build_tel_aviv_registry_wolt)
 
 _BUILDERS = {
     "cerberus": build_tel_aviv_registry,
     "publishprice": build_tel_aviv_registry_publishprice,
     "bina": build_tel_aviv_registry_bina,
+    "superpharm": build_tel_aviv_registry_superpharm,
+    "wolt": build_tel_aviv_registry_wolt,
+    "citymarket": build_tel_aviv_registry_citymarket,
 }
 
 LEGACY_PATH = os.path.join(BACKEND_DIR, "stores.json")  # pre-refactor location

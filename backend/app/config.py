@@ -123,6 +123,69 @@ CHAINS = {
         "bina_prefix": "superbareket",
         "format_en": "Bareket (supermarket)",
     },
+    "tiv_taam": {
+        "key": "tiv_taam",
+        "id": 10,
+        "chain_id_gov": "7290873255550",
+        "name_he": "טיב טעם",
+        "name_en": "Tiv Taam",
+        "portal": "cerberus",
+        "cerberus_user": "TivTaam",
+        "format_en": "Tiv Taam (supermarket)",
+    },
+    "osher_ad": {
+        "key": "osher_ad",
+        "id": 11,
+        "chain_id_gov": "7290103152017",
+        "name_he": "אושר עד",
+        "name_en": "Osher Ad",
+        "portal": "cerberus",
+        "cerberus_user": "osherad",
+        "format_en": "Osher Ad (hypermarket)",
+    },
+    "fresh_market": {
+        "key": "fresh_market",
+        "id": 12,
+        "chain_id_gov": "7290876100000",
+        "name_he": "פרש מרקט",
+        "name_en": "Fresh Market",
+        "portal": "cerberus",
+        "cerberus_user": "freshmarket",
+        "format_en": "Fresh Market (supermarket)",
+    },
+    "super_pharm": {
+        "key": "super_pharm",
+        "id": 13,
+        "chain_id_gov": "7290172900007",
+        "name_he": "סופר-פארם",
+        "name_en": "Super-Pharm",
+        "portal": "superpharm",
+        "format_en": "Super-Pharm (drugstore)",
+    },
+    "wolt": {
+        "key": "wolt",
+        "id": 14,
+        "chain_id_gov": "7290058249350",
+        "name_he": "וולט מרקט",
+        "name_en": "Wolt Market",
+        "portal": "wolt",
+        "format_en": "Wolt Market (delivery)",
+        # 042 (Neve Tzedek) publishes an empty <Items/> PriceFull every day —
+        # the store isn't stocked yet. Re-check occasionally.
+        "exclude_stores": ["042"],
+    },
+    "city_market": {
+        "key": "city_market",
+        "id": 15,
+        "chain_id_gov": "7290000000003",
+        "name_he": "סיטי מרקט",
+        "name_en": "City Market",
+        "portal": "citymarket",
+        "format_en": "City Market (minimarket)",
+        # 063 (Kikar HaMedina) publishes either 0.4 KB stubs or a 27 MB catalog
+        # dump whose PriceUpdateDate rows are from 2021 — no usable live prices.
+        "exclude_stores": ["063"],
+    },
 }
 
 CHAIN_BY_ID = {c["id"]: c for c in CHAINS.values()}

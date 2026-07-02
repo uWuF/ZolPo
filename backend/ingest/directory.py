@@ -53,6 +53,18 @@ _STREETS_EN = {
     "ויצמן": "Weizmann", "פנקס": "Pinkas", "דרך השלום": "Derech HaShalom",
     "משה דיין": "Moshe Dayan", "קיבוץ גלויות": "Kibbutz Galuyot",
     "לבנדה": "Levanda", "הר ציון": "Har Zion", "שלבים": "Shlavim",
+    "קלישר": "Kalisher", "דניאל": "Daniel", "מח\"ל": "Machal", "לח\"י": "Lahi",
+    "ה' באייר": "Kikar HaMedina", "דבורה הנביאה": "Dvora HaNevia",
+    "פנחס רוזן": "Pinchas Rozen", "מאז\"ה": "Maze", "איינשטיין": "Einstein",
+    "יהודה מכבי": "Yehuda Maccabi", "יגאל אלון": "Yigal Alon",
+    "פרישמן": "Frishman", "שדרות ירושלים": "Jerusalem Blvd",
+    "קרמינצקי": "Kremenetski", "אורי צבי גרינברג": "Uri Zvi Grinberg",
+    "תלמוד בבלי": "Bavli", "הלוחמים": "Wolfson", "חרוץ": "Yad Eliyahu",
+    "דרך מנחם בגין": "Menachem Begin", "נחלת יצחק": "Nachalat Yitzhak",
+    "נחלת-יצחק": "Nachalat Yitzhak", "צייטלין": "Zeitlin", "גורדון": "Gordon",
+    "פינסקר": "Pinsker", "לוינסקי": "Levinsky", "אחימאיר": "Achimeir",
+    "ניסים אלוני": "Nisim Aloni", "שאול המלך": "Shaul HaMelech",
+    "גני התערוכה": "TLV Port", "גני-התערוכה": "TLV Port", "הברזל": "HaBarzel",
 }
 
 
@@ -111,6 +123,12 @@ def _is_tel_aviv(city: str) -> bool:
     return c == TEL_AVIV_CITY_CODE or "תל אביב" in c
 
 
+def _is_shoppable(store: dict) -> bool:
+    """Drop fulfilment/picking centres and test venues — not walk-in stores."""
+    name = store.get("store_name", "")
+    return not ("ליקוט" in name or "Test Venue" in name or "CLOSED" in name)
+
+
 def _build_entries(chain_key: str, directory: list[dict], has_price, download,
                    do_geocode: bool) -> list[dict]:
     """
@@ -119,7 +137,10 @@ def _build_entries(chain_key: str, directory: list[dict], has_price, download,
     `has_price(sid) -> bool-ish`, `download(sid) -> None` are portal closures.
     """
     chain = CHAINS[chain_key]
-    ta = [s for s in directory if _is_tel_aviv(s["city"]) and s["store_id"]]
+    excluded = {sid.lstrip("0") for sid in chain.get("exclude_stores", [])}
+    ta = [s for s in directory
+          if _is_tel_aviv(s["city"]) and s["store_id"] and _is_shoppable(s)
+          and s["store_id"].lstrip("0") not in excluded]
 
     entries = []
     for s in ta:
@@ -202,5 +223,64 @@ def build_tel_aviv_registry_bina(chain_key: str, do_geocode: bool = True) -> lis
         has_price=lambda sid: newest_file_name(names, sid, "pricefull"),
         download=lambda sid: bina.download_store_file(
             prefix, sid, dump_dir(chain_key, sid), names),
+        do_geocode=do_geocode,
+    )
+
+
+# Super-Pharm marks a few out-of-town branches with Tel Aviv's city code (e.g.
+# the Givatayim mall); the address gives them away.
+_NON_TA_ADDRESS = ("גבעתיים", "רמת גן", "רמת-גן", "בני ברק", "בני-ברק", "חולון",
+                   "בת ים", "בת-ים", "ראשון לציון", "פתח תקו", "הרצליה")
+
+
+def build_tel_aviv_registry_superpharm(chain_key: str, do_geocode: bool = True) -> list[dict]:
+    """Tel Aviv registry entries for Super-Pharm (own MVC-grid portal)."""
+    from . import superpharm as sp
+
+    directory = [s for s in parse_stores_directory(sp.fetch_stores_directory())
+                 if not any(city in s["address"] for city in _NON_TA_ADDRESS)]
+    ta_ids = {s["store_id"] for s in directory if _is_tel_aviv(s["city"])}
+    files = sp.list_files("PriceFull", ta_ids)
+    return _build_entries(
+        chain_key, directory,
+        has_price=lambda sid: files.get(str(sid).lstrip("0")),
+        download=lambda sid: sp.download_store_file(
+            sid, dump_dir(chain_key, sid), files),
+        do_geocode=do_geocode,
+    )
+
+
+def build_tel_aviv_registry_wolt(chain_key: str, do_geocode: bool = True) -> list[dict]:
+    """Tel Aviv registry entries for Wolt Market (static daily HTML index)."""
+    from . import wolt
+
+    files = wolt.list_files(days_back=2)
+    directory = parse_stores_directory(wolt.fetch_stores_directory(files))
+    return _build_entries(
+        chain_key, directory,
+        has_price=lambda sid: wolt.newest_file_name(files, sid),
+        download=lambda sid: wolt.download_store_file(
+            files, sid, dump_dir(chain_key, sid)),
+        do_geocode=do_geocode,
+    )
+
+
+def build_tel_aviv_registry_citymarket(chain_key: str, do_geocode: bool = True) -> list[dict]:
+    """
+    Tel Aviv registry entries for City Market Shops. The portal has no usable
+    chain-wide Stores directory, so the listing table's branch labels are the
+    directory; stub PriceFull files (a few hundred bytes) don't count as live.
+    """
+    from . import citymarket as cm
+
+    rows = cm.list_rows()
+    branches = cm.tel_aviv_branches(rows, min_kb=5.0)
+    directory = [{"store_id": sid, "city": "תל אביב - יפו", "zip": "",
+                  "subchain_id": "", **info} for sid, info in branches.items()]
+    return _build_entries(
+        chain_key, directory,
+        has_price=lambda sid: cm.newest_row(rows, sid, "PriceFull", min_kb=5.0),
+        download=lambda sid: cm.download_store_file(
+            rows, sid, dump_dir(chain_key, sid), min_kb=5.0),
         do_geocode=do_geocode,
     )

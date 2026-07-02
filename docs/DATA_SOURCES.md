@@ -65,28 +65,78 @@ Stores directory — **Tel Aviv-Yafo = 5000**.
   returns `[{SPath: real-url}]`. Payloads are ZIP despite the `.gz` extension.
 - Prefixes: `kingstore` (2 TA stores), `goodpharm` (17), `superbareket` (2).
 - Downloader: `ingest/bina.py`. Other Bina chains (Zol VeBegadol, Super Sapir,
-  Maayan 2000, Shuk HaIr, Shefa …) have **no Tel Aviv branches**.
+  Maayan 2000, Shuk HaIr, Shefa, City Market Kiryat Gat, Meshnat Yosef …) have
+  **no Tel Aviv branches**.
+
+### Tiv Taam — Cerberus (username `TivTaam`)
+- ChainID `7290873255550`. 18 Tel Aviv stores with live PriceFull (the portal
+  publishes in bursts — it was empty on 2026-06-30 and full again on 07-02, so
+  an empty listing is temporary, retry later). The "ליקוט" entry is an online
+  order-picking centre, filtered out by `directory._is_shoppable`.
+
+### Osher Ad — Cerberus (username `osherad`)
+- ChainID `7290103152017`. One Tel Aviv branch: `024` Kremenetski 3.
+
+### Fresh Market — Cerberus (username `freshmarket`)
+- ChainID `7290876100000`. 3 Tel Aviv branches (004 Uri Zvi Grinberg,
+  032 Ramat Aviv, 041 Tip Top Bavli).
+
+### Super-Pharm — own portal (prices.super-pharm.co.il, no login)
+- ChainID `7290172900007`. An MVC-grid listing, newest first; working filters:
+  `Category-equals` (Price/PriceFull/Promo/PromoFull/Stores), `Date-equals`
+  (DD/MM/YYYY). `Name-contains` is ignored. Download links stream the gzip
+  directly. ~31 Tel Aviv branches (city code 5000; out-of-town stores wrongly
+  coded 5000, e.g. the Givatayim mall, are dropped by an address check).
+- Downloader: `ingest/superpharm.py`.
+
+### Wolt Market — own portal (wm-gateway.wolt.com, no login)
+- ChainID `7290058249350`. Static daily index
+  `/isr-prices/public/v1/<YYYY-MM-DD>.html` with relative `download/<date>/<file>.gz`
+  links: PriceFull + PromoFull per dark store, one Stores file. 7 Tel Aviv
+  delivery-only dark stores (Wolfson, Florentin, Top Dan, Yad Eliyahu,
+  Ben Yehuda, Neve Tzedek, "Bialik"). Test venues / CLOSED entries filtered out.
+- Downloader: `ingest/wolt.py`.
+
+### City Market Shops — own portal (citymarket-shops.co.il, no login)
+- Umbrella portal for franchise mini-markets, ChainID `7290000000003` (files
+  sometimes carry a zeroed chain id). A paginated table maps each file to its
+  branch label; downloads are per-row `/downloadFile/<guid>` links. No usable
+  chain-wide Stores directory — branch labels are parsed instead. Some branches
+  publish stub PriceFull files (~0.4 KB, e.g. Kikar HaMedina), rejected by a
+  5 KB size floor. 4 real TA branches: Tower (008), Machal 16 (023) and the two
+  Matok BaShuk Carmel-market shops (031, 040).
+- Downloader: `ingest/citymarket.py`.
 
 ### Promotions (all portals)
 Every portal also publishes `PromoFull` per store (Shufersal `catID=4`, Cerberus
-and Bina by file prefix, PublishPrice from the same folder listing).
-`ingest/promos.py` + `scripts/promos.py` download and load them into
+and Bina by file prefix, PublishPrice/Wolt/Super-Pharm/City Market from their
+listings). `ingest/promos.py` + `scripts/promos.py` download and load them into
 `promos`/`promo_items`; the API serves only promos whose `end_date` hasn't
 passed, and `/api/search?deals=1` filters to promoted products.
 
-### Probed and currently unavailable (state as of 2026-07-02)
-- **Tiv Taam** (`TivTaam`) and **Cofix** (`SuperCofixApp`): Cerberus login works
-  but the portals hold **no PriceFull files** at all right now.
+Two schema dialects exist and both are parsed: the Cerberus/Bina family wraps
+item codes in `<Item>` with `PromotionEndDate`, while the Shufersal family
+(also Wolt, Super-Pharm, AM:PM, Carrefour in part) uses `<PromotionItem>` with
+`PromotionEndDateTime`. Blanket perks — coupon promos ("קופון") and promos with
+end dates 18+ months out (Cibus etc.) — are dropped at ingest so the amber deal
+line only ever shows real product promotions.
+
+### Probed and currently unavailable (state as of 2026-07-02, full gov-list sweep)
+- **Cofix** (`SuperCofixApp`): Cerberus login works, 6 TA stores in the
+  directory, but the portal holds **no PriceFull files**.
 - **Keshet** (`Keshet`): publishes, but its single Tel Aviv store (`091`) has no
   live file. A `CHAINS` entry exists; re-run `build_registry.py keshet` later.
-- **Super Yuda** (`yuda_ho`) / **Fresh Market** (`freshmarket`): Cerberus, but no
-  usable Stores directory (files nested in a folder / directory missing).
-- **Victory** (`laibcatalog.co.il` JSON API `/webapi/api/getbranches`): API works
-  but the branch list has **no Tel Aviv location** — nothing to add.
-- **Super-Pharm** (own paginated portal): drugstore segment already covered by
-  Good Pharm + Shufersal Be; dedicated client deferred.
-- Yohananof, Osher Ad, Stop Market, Salach Dabach, Politzer: reachable via
-  Cerberus but **no Tel Aviv branches** (or none with live files).
+- **Super Yuda** (`yuda_ho`, files under `/Yuda`): the folder is empty right now.
+- **Victory / Machsanei HaShuk / H. Cohen** (`laibcatalog.co.il` Matrix API):
+  API works but **no Tel Aviv branch** in any of the three chains.
+- **Hazi Hinam** (shop.hazi-hinam.co.il/Prices): portal works, 13 stores,
+  **none in Tel Aviv**.
+- **Netiv HaChesed** (`141.226.203.152`): HTTP 500. Bnei Brak chain anyway.
+- **Meshnat Yosef** (workers.dev JSON / Bina `ktshivuk`): publishes a single
+  virtual "website" store, no TA branches.
+- Yohananof, Stop Market, Salach Dabach, Politzer: reachable via Cerberus but
+  **no Tel Aviv branches**.
+- **Quik** (delivery): marked unstable in the scrapers library; skipped.
 
 > The TLS chain on publishedprices omits an intermediate cert; `truststore`
 > (in requirements) lets Python use the OS trust store to verify it.

@@ -3,10 +3,13 @@
 Real-time **Israeli supermarket price comparison**. Compare the *same product*
 across stores and chains using Israel's open government price-transparency data.
 
-The prototype covers **Tel Aviv-Yafo** with **126 stores across 8 chains**:
-33 Shufersal (Sheli, Deal, Express, Be), 4 Rami Levy, 32 AM:PM, 13 Yellow (Paz),
-23 Carrefour, 2 King Store, 17 Good Pharm and 2 Super Bareket — plus active
-**promotions** for every store. Built to scale to more chains and cities by
+The prototype covers **Tel Aviv-Yafo** with **189 stores across 14 chains** —
+every chain from the [government master list](https://www.gov.il/he/pages/cpfta_prices_regulations)
+that has a Tel Aviv branch publishing price files: 33 Shufersal (Sheli, Deal,
+Express, Be), 32 AM:PM, 30 Super-Pharm, 23 Carrefour, 18 Tiv Taam, 17 Good
+Pharm, 13 Yellow (Paz), 6 Wolt Market, 5 City Market, 4 Rami Levy, 3 Fresh
+Market, 2 King Store, 2 Super Bareket and 1 Osher Ad — plus **~128k active
+promotions** across every store. Built to scale to more chains and cities by
 adding one config entry + (sometimes) one downloader.
 
 ```

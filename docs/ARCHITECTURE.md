@@ -45,6 +45,9 @@ command never has to change.
 | `cerberus.py`     | Login + download from the shared `publishedprices.co.il` portal (Rami Levy, AM:PM/Dor Alon, Yellow …). |
 | `publishprice.py` | Download from the PublishPrice portal family (Carrefour). |
 | `bina.py`         | Download from the Bina portal family (King Store, Good Pharm, Bareket). |
+| `superpharm.py`   | Download from Super-Pharm's own MVC-grid portal. |
+| `wolt.py`         | Download from Wolt Market's static daily HTML index. |
+| `citymarket.py`   | Download from the City Market Shops umbrella portal (branch labels as directory). |
 | `directory.py`    | Build Tel Aviv registry entries from a chain's Stores directory (portal-agnostic core + per-portal builders). |
 | `geocode.py`      | Address → lat/lon (Nominatim → Photon → ZIP fallback). |
 | `loader.py`       | Parse `PriceFull` XML → DB, for every registry store of any chain. |

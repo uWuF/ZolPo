@@ -58,6 +58,44 @@ class StoreField(unittest.TestCase):
                          "PriceFull7290058140886-733-202606300215.gz")
 
 
+class NewPortalHelpers(unittest.TestCase):
+    """Filename handling for the Super-Pharm / Wolt / City Market portals."""
+
+    def test_wolt_newest_by_store(self):
+        from ingest.wolt import newest_file_name
+        files = [
+            "download/2026-07-01/PriceFull7290058249350-000-002-20260701-000055.gz",
+            "download/2026-07-02/PriceFull7290058249350-000-002-20260702-000055.gz",
+            "download/2026-07-02/PriceFull7290058249350-000-010-20260702-000012.gz",
+            "download/2026-07-02/PromoFull7290058249350-000-002-20260702-000040.gz",
+        ]
+        self.assertEqual(
+            newest_file_name(files, "002"),
+            "download/2026-07-02/PriceFull7290058249350-000-002-20260702-000055.gz")
+        self.assertEqual(
+            newest_file_name(files, "2", "PromoFull"),
+            "download/2026-07-02/PromoFull7290058249350-000-002-20260702-000040.gz")
+
+    def test_citymarket_both_layouts_and_stub_filter(self):
+        from ingest.citymarket import store_field, newest_row
+        self.assertEqual(store_field("PriceFull7290000000003-063-202607021730"), "063")
+        self.assertEqual(store_field("PriceFull7290000000003-000-023-20260702-001416.gz"), "023")
+        self.assertEqual(store_field("PriceFull0000000000000-040-202607020046"), "040")
+        rows = [
+            ("PriceFull7290000000003-063-202607021730", "b", "/downloadFile/x", 0.4),
+            ("PriceFull7290000000003-063-202607020830", "b", "/downloadFile/y", 900.0),
+            ("PriceFull7290000000003-008-202607020813", "t", "/downloadFile/z", 1200.0),
+        ]
+        # the newer 17:30 file is a stub -> with a size floor the 08:30 one wins
+        self.assertEqual(newest_row(rows, "063", min_kb=5.0)[2], "/downloadFile/y")
+        self.assertIsNone(newest_row(rows, "099", min_kb=5.0))
+
+    def test_superpharm_store_field(self):
+        from ingest.superpharm import _store_field as sp_field
+        self.assertEqual(sp_field("PriceFull7290172900007-000-253-20260701-071126.gz"), "253")
+        self.assertEqual(sp_field("Stores7290172900007-000-20260702-070014.gz"), "")
+
+
 class ParseKeys(unittest.TestCase):
     def test_valid_and_malformed(self):
         self.assertEqual(

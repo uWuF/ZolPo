@@ -13,7 +13,7 @@ import sys
 
 from app.config import CHAINS, dump_dir
 from app import registry
-from ingest import bina, publishprice, shufersal
+from ingest import bina, citymarket, publishprice, shufersal, superpharm, wolt
 from ingest.cerberus import CerberusClient, download_store_pricefull
 
 
@@ -45,6 +45,22 @@ def main(only: list[str]) -> None:
             for s in targets:
                 p = bina.download_store_file(chain["bina_prefix"], s["store_id"],
                                              dump_dir(ck, s["store_id"]), names)
+                print(f"   {s['store_id']}: {'ok' if p else 'NO FILE'}")
+        elif chain["portal"] == "superpharm":
+            files = superpharm.list_files("PriceFull", {s["store_id"] for s in targets})
+            for s in targets:
+                p = superpharm.download_store_file(s["store_id"], dump_dir(ck, s["store_id"]), files)
+                print(f"   {s['store_id']}: {'ok' if p else 'NO FILE'}")
+        elif chain["portal"] == "wolt":
+            files = wolt.list_files(days_back=2)
+            for s in targets:
+                p = wolt.download_store_file(files, s["store_id"], dump_dir(ck, s["store_id"]))
+                print(f"   {s['store_id']}: {'ok' if p else 'NO FILE'}")
+        elif chain["portal"] == "citymarket":
+            rows = citymarket.list_rows()
+            for s in targets:
+                p = citymarket.download_store_file(rows, s["store_id"],
+                                                   dump_dir(ck, s["store_id"]), min_kb=5.0)
                 print(f"   {s['store_id']}: {'ok' if p else 'NO FILE'}")
         else:  # shufersal open portal
             for s in targets:

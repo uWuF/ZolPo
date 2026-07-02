@@ -19,6 +19,7 @@ serves promos whose end_date has not passed.
 
 from __future__ import annotations
 
+import datetime as _dt
 import glob
 import gzip
 import os
@@ -28,7 +29,7 @@ from app.config import CHAINS, dump_dir
 from app.db import get_db, init_db
 from app import registry
 
-from . import bina, publishprice, shufersal
+from . import bina, citymarket, publishprice, shufersal, superpharm, wolt
 from .cerberus import CerberusClient, download_store_file
 
 
@@ -47,8 +48,19 @@ def _num(s: str) -> float | None:
         return None
 
 
+def _iter_items(promo):
+    """Item nodes across both schema dialects: <Item> (Cerberus/Bina family)
+    and <PromotionItem> (Shufersal family, Wolt, Super-Pharm)."""
+    yield from promo.iter("Item")
+    yield from promo.iter("PromotionItem")
+
+
 def iter_promos(path: str):
     """Yield (promo_id, description, end_date, min_qty, price, [item_codes])."""
+    # Real product deals run for days or weeks. Blanket perks (Cibus/coupon
+    # promos with end dates in 2030+) would otherwise stamp the same amber line
+    # on thousands of products, drowning the actual deals.
+    horizon = (_dt.date.today() + _dt.timedelta(days=550)).isoformat()
     raw = open(path, "rb").read()
     if raw[:2] == b"\x1f\x8b":
         raw = gzip.decompress(raw)
@@ -57,18 +69,24 @@ def iter_promos(path: str):
         promo_id = _text(p, "PromotionId", "PromotionID")
         if not promo_id:
             continue
+        desc = _text(p, "PromotionDescription")
+        end = _text(p, "PromotionEndDate", "PromotionEndDateTime")[:10]
+        if "קופון" in desc or (end and end > horizon):
+            continue
         codes = [
             _text(it, "ItemCode")
-            for it in p.iter("Item")
+            for it in _iter_items(p)
             if _text(it, "ItemCode") and _text(it, "IsGiftItem") != "1"
         ]
         if not codes:
             continue
         yield (
             promo_id,
-            _text(p, "PromotionDescription"),
-            _text(p, "PromotionEndDate")[:10],
-            _num(_text(p, "MinQty")),
+            desc,
+            # PromotionEndDateTime is the Shufersal-family spelling; [:10] trims
+            # the ISO datetime down to the date either way.
+            end,
+            _num(_text(p, "MinQty", "MinNoOfItemOffered", "MinNoOfItemsOffered")),
             _num(_text(p, "DiscountedPrice")),
             codes,
         )
@@ -113,6 +131,24 @@ def download_all() -> dict:
             for s in chain_stores:
                 p = bina.download_store_file(chain["bina_prefix"], s["store_id"],
                                              dump_dir(ck, s["store_id"]), names, "PromoFull")
+                stats["ok" if p else "missing"] += 1
+        elif portal == "superpharm":
+            files = superpharm.list_files("PromoFull", {s["store_id"] for s in chain_stores})
+            for s in chain_stores:
+                p = superpharm.download_store_file(s["store_id"], dump_dir(ck, s["store_id"]),
+                                                   files, "PromoFull")
+                stats["ok" if p else "missing"] += 1
+        elif portal == "wolt":
+            files = wolt.list_files(days_back=2)
+            for s in chain_stores:
+                p = wolt.download_store_file(files, s["store_id"],
+                                             dump_dir(ck, s["store_id"]), "PromoFull")
+                stats["ok" if p else "missing"] += 1
+        elif portal == "citymarket":
+            rows = citymarket.list_rows()
+            for s in chain_stores:
+                p = citymarket.download_store_file(rows, s["store_id"],
+                                                   dump_dir(ck, s["store_id"]), "PromoFull")
                 stats["ok" if p else "missing"] += 1
         else:  # shufersal
             for s in chain_stores:
