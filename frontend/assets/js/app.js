@@ -108,9 +108,13 @@
         if (def.length === 0) def = this.stores.slice(0, 4).map(s => s.key);
 
         // Restore a saved selection (dropping stale keys); else use the default.
+        // A huge saved selection (e.g. a former "select all" = 189 stores) makes
+        // every card render 189 price rows and every search attach 189 price
+        // columns — that's the "everything lags" mode. Cap what we restore;
+        // the picker itself still allows any manual set.
         const stored = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
         const restored = Array.isArray(stored) ? stored.filter(k => valid.has(k)) : [];
-        this.selectedIds = restored.length ? restored : def;
+        this.selectedIds = restored.length && restored.length <= 12 ? restored : def;
       },
 
       async loadMeta() {
@@ -234,13 +238,20 @@
         this._persist();
       },
       selectFood() {
-        // Full-range food stores only (drops convenience/drugstore formats).
+        // One representative branch per full-range food chain: "compare the
+        // chains" without the 90-store render that made everything lag.
+        const seen = new Set();
         this.selectedIds = this.stores
           .filter(s => /supermarket|hypermarket/i.test(s.format_en || ''))
+          .filter(s => !seen.has(s.chain_key) && seen.add(s.chain_key))
           .map(s => s.key);
         this._persist();
       },
-      selectAllStores() { this.selectedIds = this.stores.map(s => s.key); this._persist(); },
+      resetStores() {
+        localStorage.removeItem(STORE_KEY);
+        this.selectedIds = [];
+        this.loadStores().then(() => this.search());
+      },
 
       // ── product / price helpers ──────────────────────────────────────────
       placeholder(category) { return `/api/placeholder/${encodeURIComponent(category || 'default')}.svg`; },
