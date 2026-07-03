@@ -36,6 +36,27 @@
                         'Express (convenience)', 'Be (drugstore)'];
   const STORE_KEY = 'zolpo-stores-v2';   // v2: stores universal keys, not bare store_ids
 
+  // Browse tiles: label key + guess_category() values + an inline SVG path
+  // (24×24 outline, stroke-based — same style as the header icons).
+  const CATS = [
+    { key: 'cat_dairy',   cats: 'milk,cheese,egg',
+      d: 'M8 2h8M9 2v3.5L6.5 9v11a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V9L15 5.5V2M6.5 12h11' },
+    { key: 'cat_bread',   cats: 'bread',
+      d: 'M4 10a3 3 0 0 1 0-6h16a3 3 0 0 1 0 6v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM9 8v6M15 8v6' },
+    { key: 'cat_drinks',  cats: 'drink,water,coffee',
+      d: 'M6 3h12l-1.5 18h-9zM6.8 9h10.4' },
+    { key: 'cat_snacks',  cats: 'snack',
+      d: 'M12 3c5 0 8 3.5 8 8s-3 10-8 10-8-5.5-8-10 3-8 8-8zM9 9h.01M14 8h.01M11 13h.01M15 13h.01M10 17h.01' },
+    { key: 'cat_produce', cats: 'fruit,vegetable',
+      d: 'M12 8c-4 0-7 3-7 7 0 3 2 6 7 6s7-3 7-6c0-4-3-7-7-7zM12 8c0-2 1-4 3-5M12 8c0-2-1-4-3-5' },
+    { key: 'cat_meat',    cats: 'meat,chicken,fish',
+      d: 'M15 3c3.5 0 6 2.5 6 6s-4 9-9 9c-2 0-3.5-.7-4.6-1.4L4 20l-1-3 3.4-3.4C5.7 12.5 5 11 5 9c0-3.5 4-6 10-6zM14 8h.01' },
+    { key: 'cat_pantry',  cats: 'pasta,rice,oil',
+      d: 'M5 8h14M6 8l1 13h10l1-13M9 8V5a3 3 0 0 1 6 0v3' },
+    { key: 'cat_home',    cats: 'cleaning,hygiene',
+      d: 'M9 3h4v3M8 6h6l1 4v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10zM7 13h8' },
+  ];
+
   function zolpo() {
     return {
       query:          '',
@@ -45,13 +66,18 @@
       marketsOpen:    false,
       dealsOnly:      false,  // 🏷️ filter: only products with an active promo
       dealKind:       '',     // '' = all kinds; else one of DEAL_KINDS
+      activeCat:      '',     // browse-tile category filter (comma list)
       openPromoCode:  null,   // product whose promo panel is expanded
+      radar:          [],     // deals radar: top savings in the selected stores
+      radarLoading:   true,
+      locating:       false,  // "near me" geolocation in flight
       loading:        true,
       cart:           {},
       lang:           localStorage.getItem('zolpo-lang') || 'en',
       enriching:      false,
       enrichProgress: 0,
       lastUpdate:     null,
+      meta:           null,   // /api/meta payload (hero stats)
 
       // ── i18n ──────────────────────────────────────────────────────────────
       t(key) { return (I18N[this.lang] || I18N.en)[key] || key; },
@@ -86,7 +112,7 @@
       async init() {
         document.documentElement.lang = this.lang;
         await this.loadStores();
-        await this.search();
+        await Promise.all([this.search(), this.loadRadar()]);
         this.loadMeta();
         // Open Food Facts auto-enrichment is off: coverage for Israeli barcodes
         // is <1%, so the old loop cost minutes of background requests per visit
@@ -118,7 +144,91 @@
       },
 
       async loadMeta() {
-        try { this.lastUpdate = (await api.meta()).last_update || null; } catch (_) {}
+        try {
+          this.meta = await api.meta();
+          this.lastUpdate = this.meta.last_update || null;
+        } catch (_) {}
+      },
+
+      // ── home / hero ───────────────────────────────────────────────────────
+      // Home = hero + radar + browse tiles; any query/filter switches to results.
+      homeMode() { return !this.query && !this.dealsOnly && !this.activeCat; },
+      heroStats() {
+        const m = this.meta || {};
+        const fmt = n => (n >= 1000 ? `${Math.round(n / 1000)}K` : `${n || 0}`);
+        return [
+          { n: `${this.stores.length}`, label: this.t('statStores') },
+          { n: `${new Set(this.stores.map(s => s.chain_key)).size}`, label: this.t('statChains') },
+          { n: fmt(m.active_promos), label: this.t('statDeals') },
+        ];
+      },
+
+      async loadRadar() {
+        this.radarLoading = true;
+        try {
+          const data = await api.deals(this.selectedIds, '', 20);
+          this.radar = data.results || [];
+        } catch (_) { this.radar = []; }
+        finally { this.radarLoading = false; }
+      },
+      savePctLabel(p) { return `-${Math.round((p.save_pct || 0) * 100)}%`; },
+      bestPrice(p) {
+        const vals = this.visibleStores().map(s => p.prices[s.key]).filter(v => v != null);
+        return vals.length ? Math.min(...vals) : null;
+      },
+      bestPriceStore(p) {
+        const best = this.bestPrice(p);
+        return this.visibleStores().find(s => p.prices[s.key] === best) || null;
+      },
+      openDeal(p) {
+        // Barcode search shows the single product with its full promo panel.
+        this.query = p.item_code;
+        this.search().then(() => { this.openPromoCode = p.item_code; });
+      },
+
+      // ── browse tiles ─────────────────────────────────────────────────────
+      catTiles() { return CATS; },
+      setCat(cats) {
+        this.activeCat = this.activeCat === cats ? '' : cats;
+        this.query = '';
+        this.search();
+      },
+      goHome() {
+        this.query = ''; this.activeCat = '';
+        this.dealsOnly = false; this.dealKind = '';
+        this.search();
+      },
+
+      // ── near me ──────────────────────────────────────────────────────────
+      nearMe() {
+        if (!navigator.geolocation || this.locating) return;
+        this.locating = true;
+        navigator.geolocation.getCurrentPosition(
+          pos => { this._applyNearest(pos.coords.latitude, pos.coords.longitude); this.locating = false; },
+          () => { this.locating = false; },
+          { timeout: 8000, maximumAge: 300000 }
+        );
+      },
+      _applyNearest(lat, lon) {
+        // Nearest branch of each chain (flat-earth distance is fine at city scale),
+        // keep the 8 closest chains so cards stay readable.
+        const withGeo = this.stores.filter(s => s.lat && s.lon);
+        const dist = s => {
+          const dx = (s.lon - lon) * Math.cos(lat * Math.PI / 180), dy = s.lat - lat;
+          return dx * dx + dy * dy;
+        };
+        const bestPerChain = {};
+        for (const s of withGeo) {
+          if (!bestPerChain[s.chain_key] || dist(s) < dist(bestPerChain[s.chain_key])) {
+            bestPerChain[s.chain_key] = s;
+          }
+        }
+        const nearest = Object.values(bestPerChain)
+          .sort((a, b) => dist(a) - dist(b)).slice(0, 8);
+        if (nearest.length) {
+          this.selectedIds = nearest.map(s => s.key);
+          this._persist();
+        }
       },
 
       async _enrichLoop() {
@@ -140,7 +250,8 @@
         this.loading = true;
         this.openPromoCode = null;
         try {
-          const data = await api.search(this.query, this.selectedIds, this.dealsOnly, this.dealKind);
+          const data = await api.search(this.query, this.selectedIds, this.dealsOnly,
+                                        this.dealKind, this.activeCat);
           this.products = data.results || [];
         } catch (e) { console.error('search failed', e); this.products = []; }
         finally { this.loading = false; }
@@ -228,7 +339,11 @@
 
       visibleStores() { return this.stores.filter(s => this.selectedIds.includes(s.key)); },
       isStoreSelected(key) { return this.selectedIds.includes(key); },
-      _persist() { localStorage.setItem(STORE_KEY, JSON.stringify(this.selectedIds)); this.search(); },
+      _persist() {
+        localStorage.setItem(STORE_KEY, JSON.stringify(this.selectedIds));
+        this.search();
+        this.loadRadar();
+      },
       toggleStore(key) {
         if (this.selectedIds.includes(key)) {
           if (this.selectedIds.length > 1) this.selectedIds = this.selectedIds.filter(k => k !== key);

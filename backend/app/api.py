@@ -61,11 +61,21 @@ def api_search(q: str = Query("", description="name / brand / barcode"),
                limit: int = Query(60, ge=1, le=200),
                stores: str = Query("", description="comma-separated universal store keys, e.g. 1:11,2:733"),
                deals: int = Query(0, description="1 = only products with an active promo in the selected stores"),
-               kind: str = Query("", description="restrict deals to one promo kind (one_plus_one, x_for_y, …)")):
+               kind: str = Query("", description="restrict deals to one promo kind (one_plus_one, x_for_y, …)"),
+               cat: str = Query("", description="comma-separated category filter (milk,cheese,…)")):
     keys = [s for s in stores.split(",") if s]
     return {"query": q,
             "results": search.search_products(q, limit, keys, deals_only=bool(deals),
-                                              deal_kind=kind)}
+                                              deal_kind=kind, categories=cat)}
+
+
+@app.get("/api/deals")
+def api_deals(stores: str = Query("", description="comma-separated universal store keys"),
+              kind: str = Query("", description="restrict to one promo kind"),
+              limit: int = Query(24, ge=1, le=100)):
+    """The deals radar: products ranked by discount depth in the selected stores."""
+    keys = [s for s in stores.split(",") if s]
+    return {"results": search.deals_feed(keys, deal_kind=kind, limit=limit)}
 
 
 @app.get("/api/product/{item_code}")
@@ -93,6 +103,13 @@ def api_meta():
     chains = []
     latest = None
     with get_db() as conn:
+        totals = conn.execute(
+            """
+            SELECT (SELECT COUNT(*) FROM products)  AS products,
+                   (SELECT COUNT(*) FROM promos
+                     WHERE end_date >= date('now')) AS active_promos
+            """
+        ).fetchone()
         for chain in CHAINS.values():
             row = conn.execute(
                 """
@@ -112,7 +129,8 @@ def api_meta():
                 "products": row["products"] if row else 0,
                 "last_update": lu,
             })
-    return {"last_update": latest, "chains": chains}
+    return {"last_update": latest, "chains": chains,
+            "products": totals["products"], "active_promos": totals["active_promos"]}
 
 
 @app.get("/api/compat")

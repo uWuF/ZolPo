@@ -8,14 +8,14 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Bump ?v= when shipping asset changes: busts the browser heuristic cache. -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=13" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=15" />
   <link rel="manifest" href='data:application/manifest+json,{"name":"ZolPo","short_name":"ZolPo","start_url":"/","display":"standalone","background_color":"%23f8fafc","theme_color":"%23f8fafc"}' />
 
   <!-- App modules (order matters: helpers define window.ZP before app.js reads it). -->
-  <script src="/assets/js/translit.js?v=13"></script>
-  <script src="/assets/js/i18n.js?v=13"></script>
-  <script src="/assets/js/api.js?v=13"></script>
-  <script src="/assets/js/app.js?v=13"></script>
+  <script src="/assets/js/translit.js?v=15"></script>
+  <script src="/assets/js/i18n.js?v=15"></script>
+  <script src="/assets/js/api.js?v=15"></script>
+  <script src="/assets/js/app.js?v=15"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 
@@ -170,8 +170,129 @@
     </div>
   </header>
 
-  <!-- ===================== Product grid ===================== -->
+  <!-- ===================== Main ===================== -->
   <main class="max-w-3xl mx-auto px-4 pt-5">
+
+    <!-- ── Home: hero + deals radar + browse (hidden as soon as the user acts) ── -->
+    <section x-show="homeMode()" x-cloak>
+
+      <!-- Hero -->
+      <div class="text-center pt-4 pb-6">
+        <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight"
+            :class="lang === 'he' ? 'he' : ''" x-text="t('heroTitle')"></h2>
+        <p class="mt-2 text-sm text-slate-500 max-w-md mx-auto"
+           :class="lang === 'he' ? 'he' : ''" x-text="t('heroSub')"></p>
+
+        <div class="mt-4 flex items-center justify-center gap-6">
+          <template x-for="s in heroStats()" :key="s.label">
+            <div class="text-center">
+              <p class="text-xl font-extrabold text-emerald-600" x-text="s.n"></p>
+              <p class="text-[11px] text-slate-400" x-text="s.label"></p>
+            </div>
+          </template>
+        </div>
+
+        <button @click="nearMe()" :disabled="locating"
+                class="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 text-white
+                       text-sm font-semibold shadow-sm active:scale-95 transition disabled:opacity-60">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="10" r="2.5"/>
+          </svg>
+          <span x-text="locating ? t('locating') : t('nearMe')"></span>
+        </button>
+      </div>
+
+      <!-- Deals radar -->
+      <div class="mb-6">
+        <div class="flex items-end justify-between mb-2">
+          <div>
+            <h3 class="text-base font-bold flex items-center gap-1.5">
+              <span class="inline-flex w-2 h-2 rounded-full bg-rose-500 relative">
+                <span class="absolute inset-0 rounded-full bg-rose-400 animate-ping"></span>
+              </span>
+              <span x-text="t('radarTitle')"></span>
+            </h3>
+            <p class="text-[11px] text-slate-400" x-text="t('radarSub')"></p>
+          </div>
+          <button @click="toggleDeals()"
+                  class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 shrink-0"
+                  x-text="t('seeAllDeals') + ' →'"></button>
+        </div>
+
+        <!-- Skeleton while ranking loads -->
+        <div x-show="radarLoading" class="flex gap-2.5 overflow-hidden">
+          <template x-for="i in 5" :key="i">
+            <div class="pulse-soft shrink-0 w-36 h-52 rounded-2xl bg-slate-200/70"></div>
+          </template>
+        </div>
+
+        <div x-show="!radarLoading" class="no-scrollbar flex gap-2.5 overflow-x-auto snap-x pb-1 -mx-4 px-4">
+          <template x-for="p in radar" :key="p.item_code">
+            <button @click="openDeal(p)"
+                    class="snap-start shrink-0 w-36 bg-white rounded-2xl border border-slate-200 shadow-sm
+                           overflow-hidden text-start relative hover:-translate-y-0.5 hover:shadow-md transition">
+              <span class="absolute top-1.5 start-1.5 z-10 px-1.5 py-0.5 rounded-lg bg-rose-500 text-white
+                           text-xs font-extrabold" x-text="savePctLabel(p)"></span>
+              <div class="aspect-square bg-slate-50 flex items-center justify-center p-2.5">
+                <img :src="p.image_url || placeholder(p.category)" :alt="productName(p)" loading="lazy"
+                     @error="$el.src = placeholder(p.category)" class="max-h-full max-w-full object-contain" />
+              </div>
+              <div class="px-2 pt-1 pb-2">
+                <p class="text-[11px] font-semibold leading-snug line-clamp-2 min-h-[2rem]"
+                   :class="lang === 'he' || !p.item_name_en ? 'he' : ''" x-text="productName(p)"></p>
+                <p class="mt-0.5 text-[11px] text-amber-700 font-medium truncate"
+                   :class="lang === 'he' ? 'he' : ''"
+                   x-text="cardPromo(p) ? promoText(cardPromo(p)) : ''"></p>
+                <p class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400" x-show="bestPriceStore(p)">
+                  <span class="chain-dot" :style="`--chain-color:${chainColor(bestPriceStore(p) || {})}`"></span>
+                  <span class="truncate" :class="lang === 'he' ? 'he' : ''"
+                        x-text="bestPriceStore(p) ? storeLabel(bestPriceStore(p)) : ''"></span>
+                </p>
+              </div>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Browse tiles -->
+      <div class="mb-6">
+        <h3 class="text-base font-bold mb-2" x-text="t('browseTitle')"></h3>
+        <div class="grid grid-cols-4 gap-2">
+          <template x-for="c in catTiles()" :key="c.key">
+            <button @click="setCat(c.cats)"
+                    class="flex flex-col items-center gap-1.5 py-3 px-1 rounded-2xl bg-white border
+                           border-slate-200 shadow-sm text-slate-600 hover:border-emerald-400
+                           hover:text-emerald-600 active:scale-95 transition">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.7"
+                   viewBox="0 0 24 24" aria-hidden="true">
+                <path :d="c.d" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="text-[10px] font-semibold leading-tight text-center"
+                    :class="lang === 'he' ? 'he' : ''" x-text="t(c.key)"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <h3 class="text-base font-bold mb-2" x-text="t('popularTitle')"></h3>
+    </section>
+
+    <!-- ── Results context bar (anything but home) ── -->
+    <div x-show="!homeMode()" x-cloak class="flex items-center gap-2 mb-3">
+      <button @click="goHome()"
+              class="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white border border-slate-200
+                     text-xs font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-600
+                     active:scale-95 transition">
+        <svg class="w-3.5 h-3.5 flip-icon" fill="none" stroke="currentColor" stroke-width="2"
+             viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19 12H5m6-6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span x-text="t('backHome')"></span>
+      </button>
+      <span class="text-xs text-slate-400"
+            x-text="activeCat ? t(catTiles().find(c => c.cats === activeCat)?.key || '') : ''"></span>
+    </div>
 
     <template x-if="loading">
       <p class="text-center text-slate-400 py-12" x-text="t('loading')"></p>

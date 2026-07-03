@@ -19,3 +19,11 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
   width: .5rem; height: .5rem; border-radius: 9999px;
   background: var(--chain-color, #94a3b8); flex: none;
 }
+
+/* Horizontal strips (deals radar): hide the scrollbar, keep the scroll. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Radar skeleton shimmer. */
+@keyframes pulse-soft { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+.pulse-soft { animation: pulse-soft 1.4s ease-in-out infinite; }
