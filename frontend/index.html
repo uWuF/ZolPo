@@ -8,14 +8,14 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Bump ?v= when shipping asset changes: busts the browser heuristic cache. -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=15" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=16" />
   <link rel="manifest" href='data:application/manifest+json,{"name":"ZolPo","short_name":"ZolPo","start_url":"/","display":"standalone","background_color":"%23f8fafc","theme_color":"%23f8fafc"}' />
 
   <!-- App modules (order matters: helpers define window.ZP before app.js reads it). -->
-  <script src="/assets/js/translit.js?v=15"></script>
-  <script src="/assets/js/i18n.js?v=15"></script>
-  <script src="/assets/js/api.js?v=15"></script>
-  <script src="/assets/js/app.js?v=15"></script>
+  <script src="/assets/js/translit.js?v=16"></script>
+  <script src="/assets/js/i18n.js?v=16"></script>
+  <script src="/assets/js/api.js?v=16"></script>
+  <script src="/assets/js/app.js?v=16"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 
@@ -382,8 +382,22 @@
                             x-text="promoFor(p, s.key).length > 1 ? '🏷️×' + promoFor(p, s.key).length : '🏷️'"></span>
                     </button>
                   </span>
-                  <span class="shrink-0 ps-1"
-                        x-text="p.prices[s.key] != null ? p.prices[s.key].toFixed(2) + ' ₪' : '—'"></span>
+                  <!-- Money-promo: struck shelf price (when known) + deal price -->
+                  <template x-if="storePromoPrice(p, s.key) != null">
+                    <span class="shrink-0 ps-1 flex items-baseline gap-1 justify-end">
+                      <template x-if="hasStrike(p, s.key)">
+                        <span class="text-[11px] text-slate-400 line-through"
+                              x-text="regPrice(p, s.key).toFixed(2)"></span>
+                      </template>
+                      <span class="font-bold text-rose-600 whitespace-nowrap"
+                            :title="promoOnly(p, s.key) ? t('dealPriceOnly') : t('dealPrice')"
+                            x-text="fmtP(storePromoPrice(p, s.key))"></span>
+                    </span>
+                  </template>
+                  <!-- No money-promo: plain shelf price (or a dash if unlisted) -->
+                  <template x-if="storePromoPrice(p, s.key) == null">
+                    <span class="shrink-0 ps-1 whitespace-nowrap" x-text="fmtP(regPrice(p, s.key))"></span>
+                  </template>
                 </div>
               </template>
             </div>

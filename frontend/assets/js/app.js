@@ -173,12 +173,12 @@
       },
       savePctLabel(p) { return `-${Math.round((p.save_pct || 0) * 100)}%`; },
       bestPrice(p) {
-        const vals = this.visibleStores().map(s => p.prices[s.key]).filter(v => v != null);
+        const vals = this.visibleStores().map(s => this.effPrice(p, s.key)).filter(v => v != null);
         return vals.length ? Math.min(...vals) : null;
       },
       bestPriceStore(p) {
         const best = this.bestPrice(p);
-        return this.visibleStores().find(s => p.prices[s.key] === best) || null;
+        return this.visibleStores().find(s => this.effPrice(p, s.key) === best) || null;
       },
       openDeal(p) {
         // Barcode search shows the single product with its full promo panel.
@@ -370,10 +370,63 @@
 
       // ── product / price helpers ──────────────────────────────────────────
       placeholder(category) { return `/api/placeholder/${encodeURIComponent(category || 'default')}.svg`; },
+      fmtP(v) { return v == null ? '—' : v.toFixed(2) + ' ₪'; },
+
+      // Regular (shelf) price a store published; null when it isn't in the feed.
+      regPrice(p, key) { const v = p.prices[key]; return v == null ? null : v; },
+      // One money-promo's per-unit price: fixed_price → price, x_for_y → price/qty
+      // (same convention as the deals ranking). Percentage / club / 1+1 carry no
+      // absolute number, so they aren't a unit price and return null.
+      promoUnitPrice(pr) {
+        if (!pr || pr.price == null || pr.price <= 0) return null;
+        return pr.price / Math.max(pr.qty || 1, 1);
+      },
+      // "מעל 100" / "מעל 200" = "when you spend over ₪X": a threshold loss-leader
+      // (item for ₪1 above a big basket), never a real per-unit price. Keep it out
+      // of the headline number — it still shows, with its terms, in the panel.
+      promoConditional(pr) { return /מעל\s*\d/.test((pr && pr.text) || ''); },
+      // Cheapest *believable* money-promo unit price for this product in one store.
+      // When a shelf price is known, ignore promos outside a 5–90% discount window
+      // (same sanity range as the deals radar) so bad source data can't headline a
+      // ₪0.50 "price". When no shelf price exists we show the promo as-is — that's
+      // exactly the gov-feed gap this feature surfaces.
+      storePromoPrice(p, key) {
+        const reg = this.regPrice(p, key);
+        let best = null;
+        for (const pr of this.promoFor(p, key)) {
+          if (this.promoConditional(pr)) continue;
+          const u = this.promoUnitPrice(pr);
+          if (u == null) continue;
+          if (reg != null) {
+            const off = 1 - u / reg;
+            if (off < 0.005 || off > 0.9) continue;
+          }
+          if (best == null || u < best) best = u;
+        }
+        return best;
+      },
+      // What you'd actually pay: the lower of shelf price and any money-promo.
+      effPrice(p, key) {
+        const vals = [this.regPrice(p, key), this.storePromoPrice(p, key)].filter(v => v != null);
+        return vals.length ? Math.min(...vals) : null;
+      },
+      // Show the struck-through shelf price next to the promo price.
+      hasStrike(p, key) {
+        const reg = this.regPrice(p, key), promo = this.storePromoPrice(p, key);
+        return reg != null && promo != null && promo < reg - 0.001;
+      },
+      // A promo exists but the store never published a shelf price (e.g. Rami
+      // Levy's PriceFull lists ~2.5k items while its PromoFull advertises more) —
+      // show the deal price instead of an empty dash.
+      promoOnly(p, key) {
+        return this.regPrice(p, key) == null && this.storePromoPrice(p, key) != null;
+      },
+
       isCheapest(p, key) {
-        const vals = this.visibleStores().map(s => p.prices[s.key]).filter(v => v != null);
+        const vals = this.visibleStores().map(s => this.effPrice(p, s.key)).filter(v => v != null);
         if (vals.length < 2) return false;
-        return p.prices[key] != null && p.prices[key] === Math.min(...vals);
+        const e = this.effPrice(p, key);
+        return e != null && e === Math.min(...vals);
       },
 
       // ── basket ───────────────────────────────────────────────────────────
@@ -388,8 +441,8 @@
       basketTotal(key) {
         let total = 0;
         for (const { product, qty } of Object.values(this.cart)) {
-          const price = product.prices[key];
-          const fallback = this.visibleStores().map(s => product.prices[s.key]).find(v => v != null);
+          const price = this.effPrice(product, key);
+          const fallback = this.visibleStores().map(s => this.effPrice(product, s.key)).find(v => v != null);
           total += (price ?? fallback ?? 0) * qty;
         }
         return total;
