@@ -212,9 +212,11 @@ def deals_feed(store_keys: list[str] | None = None, deal_kind: str = "",
     The "deals radar": products ranked by how deep the discount is, within the
     selected stores. Only priced promos count (fixed_price / x_for_y), because
     a percentage needs a number to rank on. Savings = 1 - promo_unit / regular,
-    where regular is the cheapest normal price across the selected stores and
-    promo_unit spreads a bundle's DiscountedPrice over its MinQty. Implausible
-    values (<5% or >90%, usually bad source data) are dropped.
+    measured against the shelf price *in the same store as the promo* — a promo
+    in a store that never lists a shelf price for the item is treated as the item
+    not being stocked there (see the frontend `carries()` rule), so it never
+    becomes a phantom deal. promo_unit spreads a bundle's DiscountedPrice over its
+    MinQty. Implausible values (<5% or >90%, usually bad source data) are dropped.
     """
     deal_kind = deal_kind if deal_kind in PROMO_KINDS else ""
     pairs = _parse_keys(store_keys)
@@ -223,12 +225,14 @@ def deals_feed(store_keys: list[str] | None = None, deal_kind: str = "",
     tuple_clause, tuple_params = _tuple_filter(pairs)
     kind_cond = " AND pm.kind = ?" if deal_kind else ""
 
+    # "מעל <sum>" = a "spend over ₪X" threshold loss-leader, never a real per-unit
+    # price; excluded here to match the same guard on the product cards.
     rank_sql = f"""
-        WITH scope_price AS (
-            SELECT item_code, MIN(price) AS reg
+        WITH store_price AS (
+            SELECT item_code, chain_id, store_id, MIN(price) AS reg
             FROM prices
             WHERE (chain_id, store_id) IN {tuple_clause}
-            GROUP BY item_code
+            GROUP BY item_code, chain_id, store_id
         )
         SELECT pi.item_code AS code,
                MAX( (sp.reg * max(coalesce(pm.min_qty, 1), 1) - pm.price)
@@ -237,10 +241,13 @@ def deals_feed(store_keys: list[str] | None = None, deal_kind: str = "",
         JOIN promo_items pi
           ON pi.chain_id = pm.chain_id AND pi.store_id = pm.store_id
          AND pi.promo_id = pm.promo_id
-        JOIN scope_price sp ON sp.item_code = pi.item_code
+        JOIN store_price sp
+          ON sp.item_code = pi.item_code
+         AND sp.chain_id = pm.chain_id AND sp.store_id = pm.store_id
         WHERE (pm.chain_id, pm.store_id) IN {tuple_clause}
           AND (pm.end_date IS NULL OR pm.end_date = '' OR pm.end_date >= date('now'))
           AND pm.price IS NOT NULL AND pm.price > 0 AND sp.reg > 0
+          AND pm.description NOT LIKE '%מעל%'
           {kind_cond}
         GROUP BY pi.item_code
         HAVING save_pct > 0.05 AND save_pct < 0.9

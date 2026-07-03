@@ -270,23 +270,27 @@
       setDealKind(k) { this.dealKind = this.dealKind === k ? '' : k; this.search(); },
 
       promoFor(p, key) { return (p.promos || {})[key] || []; },
-      // The one-line teaser on the card: cheapest promo among visible stores.
+      // Promos only count in stores that actually carry (price) the item — a
+      // store advertising a deal it never lists a shelf price for is treated as
+      // not stocking it, so it shows neither a deal badge nor a price.
+      promoForCarried(p, key) { return this.carries(p, key) ? this.promoFor(p, key) : []; },
+      // The one-line teaser on the card: cheapest promo among carrying stores.
       cardPromo(p) {
         let best = null;
         for (const s of this.visibleStores()) {
-          const pr = this.promoFor(p, s.key)[0];
+          const pr = this.promoForCarried(p, s.key)[0];
           if (pr && (!best || (pr.price != null && (best.price == null || pr.price < best.price)))) best = pr;
         }
         return best;
       },
       promoCount(p) {
-        return this.visibleStores().reduce((n, s) => n + this.promoFor(p, s.key).length, 0);
+        return this.visibleStores().reduce((n, s) => n + this.promoForCarried(p, s.key).length, 0);
       },
-      // Stores (among the visible ones) that have promos for this product,
+      // Stores (among the visible ones) that carry the item and have promos,
       // with their full deal lists — feeds the expandable panel.
       promoStores(p) {
         return this.visibleStores()
-          .map(s => ({ store: s, list: this.promoFor(p, s.key) }))
+          .map(s => ({ store: s, list: this.promoForCarried(p, s.key) }))
           .filter(e => e.list.length);
       },
       togglePromoPanel(p) {
@@ -374,52 +378,59 @@
 
       // Regular (shelf) price a store published; null when it isn't in the feed.
       regPrice(p, key) { const v = p.prices[key]; return v == null ? null : v; },
+      // A store "carries" the product only if it published a shelf price. A promo
+      // with no matching PriceFull row (Rami Levy lists ~2.5k items per store but
+      // advertises more promos) can't be verified as stocked/priced, so we treat
+      // that store as simply not having the item — no promo price, no badge.
+      carries(p, key) { return this.regPrice(p, key) != null; },
       // One money-promo's per-unit price: fixed_price → price, x_for_y → price/qty
-      // (same convention as the deals ranking). Percentage / club / 1+1 carry no
-      // absolute number, so they aren't a unit price and return null.
+      // (this reproduces the feed's own DiscountedPricePerMida). Percentage / club
+      // / 1+1 carry no absolute number, so they aren't a unit price → null.
       promoUnitPrice(pr) {
         if (!pr || pr.price == null || pr.price <= 0) return null;
         return pr.price / Math.max(pr.qty || 1, 1);
       },
-      // "מעל 100" / "מעל 200" = "when you spend over ₪X": a threshold loss-leader
-      // (item for ₪1 above a big basket), never a real per-unit price. Keep it out
-      // of the headline number — it still shows, with its terms, in the panel.
+      // "מעל 100" = "when you spend over ₪X": a threshold loss-leader (item for ₪1
+      // above a big basket), never a real per-unit price — keep it off the headline.
       promoConditional(pr) { return /מעל\s*\d/.test((pr && pr.text) || ''); },
-      // Cheapest *believable* money-promo unit price for this product in one store.
-      // When a shelf price is known, ignore promos outside a 5–90% discount window
-      // (same sanity range as the deals radar) so bad source data can't headline a
-      // ₪0.50 "price". When no shelf price exists we show the promo as-is — that's
-      // exactly the gov-feed gap this feature surfaces.
-      storePromoPrice(p, key) {
+      // The best (cheapest, believable) money-promo for this product in a store —
+      // only where the store actually carries it. Ignores promos outside a 5–90%
+      // discount window (same sanity range as the deals radar) so bad source data
+      // can't headline a ₪0.50 "price".
+      storeBestPromo(p, key) {
         const reg = this.regPrice(p, key);
-        let best = null;
+        if (reg == null) return null;                 // not carried → no promo price
+        let best = null, bestU = null;
         for (const pr of this.promoFor(p, key)) {
           if (this.promoConditional(pr)) continue;
           const u = this.promoUnitPrice(pr);
           if (u == null) continue;
-          if (reg != null) {
-            const off = 1 - u / reg;
-            if (off < 0.005 || off > 0.9) continue;
-          }
-          if (best == null || u < best) best = u;
+          const off = 1 - u / reg;
+          if (off < 0.005 || off > 0.9) continue;
+          if (bestU == null || u < bestU) { bestU = u; best = pr; }
         }
         return best;
+      },
+      storePromoPrice(p, key) {
+        const pr = this.storeBestPromo(p, key);
+        return pr ? this.promoUnitPrice(pr) : null;
+      },
+      // A short condition tag shown next to the deal price: multi-buy quantity, or
+      // a credit-card / club requirement. Full terms live in the expandable panel.
+      promoNote(p, key) {
+        const pr = this.storeBestPromo(p, key);
+        if (!pr) return '';
+        const q = Math.round(pr.qty || 1);
+        if (q > 1) return '×' + q;
+        const t = pr.text || '';
+        if (/אשראי/.test(t)) return this.t('condCredit');
+        if (/מועדון|לחברי|מצטרפים/.test(t)) return this.t('condClub');
+        return '';
       },
       // What you'd actually pay: the lower of shelf price and any money-promo.
       effPrice(p, key) {
         const vals = [this.regPrice(p, key), this.storePromoPrice(p, key)].filter(v => v != null);
         return vals.length ? Math.min(...vals) : null;
-      },
-      // Show the struck-through shelf price next to the promo price.
-      hasStrike(p, key) {
-        const reg = this.regPrice(p, key), promo = this.storePromoPrice(p, key);
-        return reg != null && promo != null && promo < reg - 0.001;
-      },
-      // A promo exists but the store never published a shelf price (e.g. Rami
-      // Levy's PriceFull lists ~2.5k items while its PromoFull advertises more) —
-      // show the deal price instead of an empty dash.
-      promoOnly(p, key) {
-        return this.regPrice(p, key) == null && this.storePromoPrice(p, key) != null;
       },
 
       isCheapest(p, key) {

@@ -8,14 +8,14 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Bump ?v= when shipping asset changes: busts the browser heuristic cache. -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=16" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=17" />
   <link rel="manifest" href='data:application/manifest+json,{"name":"ZolPo","short_name":"ZolPo","start_url":"/","display":"standalone","background_color":"%23f8fafc","theme_color":"%23f8fafc"}' />
 
   <!-- App modules (order matters: helpers define window.ZP before app.js reads it). -->
-  <script src="/assets/js/translit.js?v=16"></script>
-  <script src="/assets/js/i18n.js?v=16"></script>
-  <script src="/assets/js/api.js?v=16"></script>
-  <script src="/assets/js/app.js?v=16"></script>
+  <script src="/assets/js/translit.js?v=17"></script>
+  <script src="/assets/js/i18n.js?v=17"></script>
+  <script src="/assets/js/api.js?v=17"></script>
+  <script src="/assets/js/app.js?v=17"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 
@@ -374,27 +374,29 @@
                   <span class="flex items-center gap-1.5 min-w-0">
                     <span class="chain-dot" :style="`--chain-color:${chainColor(s)}`"></span>
                     <span class="truncate" :class="lang === 'he' ? 'he' : ''" x-text="storeLabel(s)"></span>
-                    <button x-show="promoFor(p, s.key).length" x-cloak
+                    <button x-show="promoForCarried(p, s.key).length" x-cloak
                             @click="togglePromoPanel(p)" aria-label="deals"
                             class="shrink-0 text-[10px] hover:scale-110 transition"
-                            :title="promoLabel(promoFor(p, s.key)[0])">
+                            :title="promoLabel(promoForCarried(p, s.key)[0])">
                       <span aria-hidden="true"
-                            x-text="promoFor(p, s.key).length > 1 ? '🏷️×' + promoFor(p, s.key).length : '🏷️'"></span>
+                            x-text="promoForCarried(p, s.key).length > 1 ? '🏷️×' + promoForCarried(p, s.key).length : '🏷️'"></span>
                     </button>
                   </span>
-                  <!-- Money-promo: struck shelf price (when known) + deal price -->
+                  <!-- With a shelf price + a deal: strike the shelf, show the deal
+                       price in rose + a short condition tag (×N / credit / club). -->
                   <template x-if="storePromoPrice(p, s.key) != null">
                     <span class="shrink-0 ps-1 flex items-baseline gap-1 justify-end">
-                      <template x-if="hasStrike(p, s.key)">
-                        <span class="text-[11px] text-slate-400 line-through"
-                              x-text="regPrice(p, s.key).toFixed(2)"></span>
-                      </template>
+                      <span class="text-[11px] text-slate-400 line-through"
+                            x-text="regPrice(p, s.key).toFixed(2)"></span>
                       <span class="font-bold text-rose-600 whitespace-nowrap"
-                            :title="promoOnly(p, s.key) ? t('dealPriceOnly') : t('dealPrice')"
-                            x-text="fmtP(storePromoPrice(p, s.key))"></span>
+                            :title="t('dealPrice')" x-text="fmtP(storePromoPrice(p, s.key))"></span>
+                      <span x-show="promoNote(p, s.key)"
+                            class="text-[9px] font-semibold text-rose-400 whitespace-nowrap"
+                            x-text="promoNote(p, s.key)"></span>
                     </span>
                   </template>
-                  <!-- No money-promo: plain shelf price (or a dash if unlisted) -->
+                  <!-- Otherwise just the shelf price, or a dash when the store
+                       doesn't list the item (a promo alone doesn't count). -->
                   <template x-if="storePromoPrice(p, s.key) == null">
                     <span class="shrink-0 ps-1 whitespace-nowrap" x-text="fmtP(regPrice(p, s.key))"></span>
                   </template>
