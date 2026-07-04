@@ -119,7 +119,91 @@ PROMO_KINDS = {"one_plus_one", "x_for_y", "percent_off", "fixed_price", "club", 
 # guess_category() outputs — the categories the browse chips may filter on.
 CATEGORIES = {"snack", "drink", "fruit", "vegetable", "milk", "cheese", "egg",
               "bread", "cleaning", "hygiene", "coffee", "meat", "chicken",
-              "fish", "pasta", "rice", "water", "oil"}
+              "fish", "pasta", "rice", "water", "oil", "alcohol", "frozen",
+              "sweet", "baby", "pet", "canned", "baking", "deli"}
+
+# Landing tiles, Wolt-Market style: tile key -> fine categories it aggregates.
+# The frontend renders these in this order; labels live in i18n.
+TILES = {
+    "produce":  ["fruit", "vegetable"],
+    "dairy":    ["milk", "cheese", "egg"],
+    "meat":     ["meat", "chicken", "fish"],
+    "bakery":   ["bread"],
+    "drinks":   ["drink", "water", "coffee"],
+    "alcohol":  ["alcohol"],
+    "snacks":   ["snack", "sweet"],
+    "frozen":   ["frozen"],
+    "pantry":   ["pasta", "rice", "oil", "canned", "baking", "deli"],
+    "home":     ["cleaning"],
+    "care":     ["hygiene"],
+    "babypet":  ["baby", "pet"],
+}
+
+
+# Hand-picked tile "hero" products — iconic, recognisable pack shots from our
+# own image table (cherry tomatoes, Strauss cottage, Bamba, Coca-Cola…). The
+# auto-pick fallback (most-covered product with a photo) surfaces whatever the
+# keyword heuristic put in the bucket, which can be off-brand for a tile cover.
+_TILE_HERO = {
+    "produce": ["7290012086113"],                    # cherry tomatoes on the vine
+    "dairy":   ["7290011194246"],                    # Strauss cottage 5%
+    "meat":    ["7290003287055", "7290109581538"],   # pargit skewers / pastrama
+    "bakery":  ["7290018500361"],                    # sliced bread loaf
+    "drinks":  ["7290011017866"],                    # Coca-Cola can
+    "alcohol": ["7501064191527"],                    # Corona 6-pack
+    "snacks":  ["7290100687109"],                    # Bamba nougat
+    "frozen":  ["7290112499929"],                    # Magnum chocolate
+    "pantry":  ["8076809512268"],                    # Barilla girandole
+    "home":    ["8001841625188"],                    # Fairy Platinum
+    "care":    ["7290112492449", "8700216527941"],   # Pinuk / Pantene shampoo
+    "babypet": ["7290013083678"],                    # Materna formula
+}
+
+
+def category_tiles(store_keys: list[str] | None = None) -> list[dict]:
+    """
+    Landing category tiles: per tile, how many distinct products the selected
+    stores stock and a representative photo — a Wolt-style browse grid without
+    shipping any static category art. Photo = the curated hero product when we
+    have its image, else the most cross-store-covered product with an image.
+    """
+    pairs = _parse_keys(store_keys)
+    tuple_clause, tuple_params = _tuple_filter(pairs)
+    scope = f"WHERE (pr.chain_id, pr.store_id) IN {tuple_clause}" if pairs else ""
+    out = []
+    with get_db() as conn:
+        counts = {r["category"]: r["c"] for r in conn.execute(
+            f"""SELECT p.category, COUNT(DISTINCT p.item_code) AS c
+                FROM prices pr JOIN products p ON p.item_code = pr.item_code
+                {scope} GROUP BY p.category""", tuple_params)}
+        for key, cats in TILES.items():
+            image = None
+            for code in _TILE_HERO.get(key, []):
+                row = conn.execute(
+                    "SELECT image_url FROM product_meta "
+                    "WHERE item_code = ? AND image_url IS NOT NULL", (code,)).fetchone()
+                if row:
+                    image = row["image_url"]
+                    break
+            if image is None:
+                cat_ph = ",".join("?" * len(cats))
+                row = conn.execute(
+                    f"""SELECT m.image_url
+                        FROM prices pr
+                        JOIN products p ON p.item_code = pr.item_code
+                        JOIN product_meta m ON m.item_code = p.item_code
+                        {scope + ' AND' if scope else 'WHERE'} p.category IN ({cat_ph})
+                          AND m.image_url IS NOT NULL
+                        GROUP BY p.item_code ORDER BY COUNT(*) DESC LIMIT 1""",
+                    (*tuple_params, *cats)).fetchone()
+                image = row["image_url"] if row else None
+            out.append({
+                "key": key,
+                "cats": ",".join(cats),
+                "count": sum(counts.get(c, 0) for c in cats),
+                "image": image,
+            })
+    return out
 
 
 def search_products(term: str, limit: int = 60, store_keys: list[str] | None = None,

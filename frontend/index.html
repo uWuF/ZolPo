@@ -8,14 +8,14 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Bump ?v= when shipping asset changes: busts the browser heuristic cache. -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=17" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=18" />
   <link rel="manifest" href='data:application/manifest+json,{"name":"ZolPo","short_name":"ZolPo","start_url":"/","display":"standalone","background_color":"%23f8fafc","theme_color":"%23f8fafc"}' />
 
   <!-- App modules (order matters: helpers define window.ZP before app.js reads it). -->
-  <script src="/assets/js/translit.js?v=17"></script>
-  <script src="/assets/js/i18n.js?v=17"></script>
-  <script src="/assets/js/api.js?v=17"></script>
-  <script src="/assets/js/app.js?v=17"></script>
+  <script src="/assets/js/translit.js?v=18"></script>
+  <script src="/assets/js/i18n.js?v=18"></script>
+  <script src="/assets/js/api.js?v=18"></script>
+  <script src="/assets/js/app.js?v=18"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 
@@ -255,27 +255,26 @@
         </div>
       </div>
 
-      <!-- Browse tiles -->
+      <!-- Browse tiles: Wolt-style photo grid; images are live product shots -->
       <div class="mb-6">
         <h3 class="text-base font-bold mb-2" x-text="t('browseTitle')"></h3>
-        <div class="grid grid-cols-4 gap-2">
+        <div class="grid grid-cols-3 gap-2">
           <template x-for="c in catTiles()" :key="c.key">
             <button @click="setCat(c.cats)"
-                    class="flex flex-col items-center gap-1.5 py-3 px-1 rounded-2xl bg-white border
-                           border-slate-200 shadow-sm text-slate-600 hover:border-emerald-400
-                           hover:text-emerald-600 active:scale-95 transition">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.7"
-                   viewBox="0 0 24 24" aria-hidden="true">
-                <path :d="c.d" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span class="text-[10px] font-semibold leading-tight text-center"
-                    :class="lang === 'he' ? 'he' : ''" x-text="t(c.key)"></span>
+                    class="flex flex-col items-center gap-1 pt-3 pb-2 px-1 rounded-2xl bg-white border
+                           border-slate-200 shadow-sm hover:border-emerald-400 hover:shadow-md
+                           active:scale-95 transition">
+              <span class="h-14 w-14 flex items-center justify-center">
+                <img :src="tileImage(c)" :alt="tileLabel(c)" loading="lazy"
+                     @error="$el.src = placeholder((c.cats || 'default').split(',')[0])"
+                     class="max-h-full max-w-full object-contain" />
+              </span>
+              <span class="text-[11px] font-semibold leading-tight text-center text-slate-700"
+                    :class="lang === 'he' ? 'he' : ''" x-text="tileLabel(c)"></span>
             </button>
           </template>
         </div>
       </div>
-
-      <h3 class="text-base font-bold mb-2" x-text="t('popularTitle')"></h3>
     </section>
 
     <!-- ── Results context bar (anything but home) ── -->
@@ -290,19 +289,18 @@
         </svg>
         <span x-text="t('backHome')"></span>
       </button>
-      <span class="text-xs text-slate-400"
-            x-text="activeCat ? t(catTiles().find(c => c.cats === activeCat)?.key || '') : ''"></span>
+      <span class="text-xs text-slate-400" x-text="activeCatLabel()"></span>
     </div>
 
-    <template x-if="loading">
+    <template x-if="!homeMode() && loading">
       <p class="text-center text-slate-400 py-12" x-text="t('loading')"></p>
     </template>
 
-    <template x-if="!loading && products.length === 0">
+    <template x-if="!homeMode() && !loading && products.length === 0">
       <p class="text-center text-slate-400 py-12" x-text="t('noResults')"></p>
     </template>
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+    <div x-show="!homeMode()" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
       <template x-for="(p, i) in products" :key="p.item_code">
         <article class="pop bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
                  :style="`animation-delay:${Math.min(i,10)*20}ms`">

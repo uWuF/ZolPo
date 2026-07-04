@@ -51,8 +51,17 @@ def _num(s: str) -> float | None:
 
 _RE_PLUS = re.compile(r"\d\s*\+\s*\d")                      # 1+1, 2+1
 _RE_X_FOR_Y = re.compile(r"\d+\s*(?:יח'?|יחידות)?\s*ב\s*-?\s*\d+")  # 2 ב-30, 3ב20
-_RE_PERCENT = re.compile(r"\d+(?:\.\d+)?\s*%")
+# A bare % is almost always a product spec, not a discount: "יוגורט 6.5%" is
+# fat, "בירה 5%" is alcohol. Count a percent as a discount only in discount
+# phrasing — "5% הנחה", "הנחה של 10%", "20% על", "השני ב-50%".
+_RE_PCT_DISCOUNT = re.compile(
+    r"\d+(?:\.\d+)?\s*%\s*(?:הנחה|הוזלה)"
+    r"|הנחה\s*(?:של\s*)?\d+(?:\.\d+)?\s*%"
+    r"|\d+(?:\.\d+)?\s*%\s*על"
+    r"|השניי?ה?\s*ב\s*-?\s*\d+(?:\.\d+)?\s*%"
+)
 _RE_B_PRICE = re.compile(r"ב\s*-?\s*\d+(?:\.\d+)?")         # "שימורים ב- 17.90"
+_RE_LEAD_PRICE = re.compile(r"^\s*\d+(?:\.\d+)?\s+\D")      # "23.90 יוגורט…" (price-first style)
 
 
 def classify_promo(desc: str, min_qty, price, rate=None) -> str:
@@ -62,17 +71,17 @@ def classify_promo(desc: str, min_qty, price, rate=None) -> str:
     Description patterns win; MinQty/DiscountedPrice/DiscountRate break ties.
     """
     d = desc or ""
-    if "מועדון" in d or "לחברי" in d:
+    if "מועדון" in d or "לחברי" in d or "מצטרפים" in d:
         return "club"
     if _RE_PLUS.search(d) or "מתנה" in d or "חינם" in d:
         return "one_plus_one"
     if _RE_X_FOR_Y.search(d):
         return "x_for_y"
-    if _RE_PERCENT.search(d) or "השני ב" in d or "חצי מחיר" in d:
+    if _RE_PCT_DISCOUNT.search(d) or "השני ב" in d or "חצי מחיר" in d:
         return "percent_off"
     if min_qty and min_qty >= 2 and price:
         return "x_for_y"
-    if price or _RE_B_PRICE.search(d):
+    if price or _RE_B_PRICE.search(d) or _RE_LEAD_PRICE.match(d):
         return "fixed_price"
     if "הנחה" in d or (rate and rate > 0):
         return "percent_off"

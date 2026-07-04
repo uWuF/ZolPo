@@ -269,10 +269,13 @@
     [/השניי?ה?\s*ב\s*-?\s*(\d+(?:\.\d+)?)\s*%/g, '2nd at $1%'],
     [/השניי?ה?\s*ב\s*-?\s*(\d+(?:\.\d+)?)/g, '2nd for ₪$1'],
     [/חצי\s*מחיר/g, 'half price'],
-    [/(^|\s)ב-?(\d+(?:\.\d+)?)/g, '$1for ₪$2'],
+    // "ב -4.90" / "ב-4.90" / "ב 4.90" — "at ₪4.90" (spacing varies by chain)
+    [/(^|\s)ב\s*-?\s*(\d+(?:\.\d+)?)/g, '$1for ₪$2'],
     [/(\d+)\s*\+\s*(\d+)\s*מתנה/g, '$1+$2 free'],
     [/מתנה/g, 'free'], [/חינם/g, 'free'],
     [/לחברי\s*מועדון/g, 'club members'], [/מועדון/g, 'club'],
+    [/מצטרפים/g, 'club members'],
+    [/-?\s*אשראי/g, ' w/ credit card'],
     [/מוצרי/g, 'all'], [/הנחה/g, 'off'], [/מבצע/g, 'deal'],
     [/בקניית/g, 'when buying'], [/בקניה\s*מעל/g, 'on orders over'],
     [/ש"?ח/g, '₪'], [/יחידות/g, 'units'], [/יח'?/g, 'pcs'],
@@ -283,6 +286,9 @@
     if (!/[א-ת]/.test(str)) return str;
     let s = replaceLongBrands(str);
     for (const [re, sub] of PROMO_PATTERNS) s = s.replace(re, sub);
+    // "2 for ₪18 ₪" — the trailing ₪ is a translated ש"ח the price pattern
+    // already absorbed; collapse it.
+    s = s.replace(/(₪\s?\d+(?:\.\d+)?)\s*₪/g, '$1');
     // whatever Hebrew remains is product/brand words — reuse the name pipeline
     return s.split(/\s+/)
             .map(w => (/[א-ת]/.test(w) ? translateProductName(w) : w))

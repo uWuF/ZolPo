@@ -21,6 +21,8 @@
       const k = kind ? `&kind=${encodeURIComponent(kind)}` : '';
       return getJSON(`/api/deals?stores=${stores}&limit=${limit}${k}`);
     },
+    cats: (storeKeys) =>
+      getJSON(`/api/cats?stores=${encodeURIComponent((storeKeys || []).join(','))}`),
     enrich: (limit = 40) => getJSON(`/api/enrich?limit=${limit}`, { method: 'POST' }),
   };
 

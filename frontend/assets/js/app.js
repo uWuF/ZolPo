@@ -36,26 +36,9 @@
                         'Express (convenience)', 'Be (drugstore)'];
   const STORE_KEY = 'zolpo-stores-v2';   // v2: stores universal keys, not bare store_ids
 
-  // Browse tiles: label key + guess_category() values + an inline SVG path
-  // (24×24 outline, stroke-based — same style as the header icons).
-  const CATS = [
-    { key: 'cat_dairy',   cats: 'milk,cheese,egg',
-      d: 'M8 2h8M9 2v3.5L6.5 9v11a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V9L15 5.5V2M6.5 12h11' },
-    { key: 'cat_bread',   cats: 'bread',
-      d: 'M4 10a3 3 0 0 1 0-6h16a3 3 0 0 1 0 6v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM9 8v6M15 8v6' },
-    { key: 'cat_drinks',  cats: 'drink,water,coffee',
-      d: 'M6 3h12l-1.5 18h-9zM6.8 9h10.4' },
-    { key: 'cat_snacks',  cats: 'snack',
-      d: 'M12 3c5 0 8 3.5 8 8s-3 10-8 10-8-5.5-8-10 3-8 8-8zM9 9h.01M14 8h.01M11 13h.01M15 13h.01M10 17h.01' },
-    { key: 'cat_produce', cats: 'fruit,vegetable',
-      d: 'M12 8c-4 0-7 3-7 7 0 3 2 6 7 6s7-3 7-6c0-4-3-7-7-7zM12 8c0-2 1-4 3-5M12 8c0-2-1-4-3-5' },
-    { key: 'cat_meat',    cats: 'meat,chicken,fish',
-      d: 'M15 3c3.5 0 6 2.5 6 6s-4 9-9 9c-2 0-3.5-.7-4.6-1.4L4 20l-1-3 3.4-3.4C5.7 12.5 5 11 5 9c0-3.5 4-6 10-6zM14 8h.01' },
-    { key: 'cat_pantry',  cats: 'pasta,rice,oil',
-      d: 'M5 8h14M6 8l1 13h10l1-13M9 8V5a3 3 0 0 1 6 0v3' },
-    { key: 'cat_home',    cats: 'cleaning,hygiene',
-      d: 'M9 3h4v3M8 6h6l1 4v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10zM7 13h8' },
-  ];
+  // Browse tiles come from GET /api/cats (Wolt-style: tile key + fine
+  // categories + product count + a representative product photo). Labels are
+  // i18n keys 'cat_<key>'.
 
   function zolpo() {
     return {
@@ -70,6 +53,7 @@
       openPromoCode:  null,   // product whose promo panel is expanded
       radar:          [],     // deals radar: top savings in the selected stores
       radarLoading:   true,
+      tiles:          [],     // /api/cats browse tiles (key, cats, count, image)
       locating:       false,  // "near me" geolocation in flight
       loading:        true,
       cart:           {},
@@ -112,7 +96,10 @@
       async init() {
         document.documentElement.lang = this.lang;
         await this.loadStores();
-        await Promise.all([this.search(), this.loadRadar()]);
+        // The landing is categories + deals radar, not a product pile — no
+        // initial catalog query; products load when the user picks/searches.
+        this.loading = false;
+        await Promise.all([this.loadRadar(), this.loadCats()]);
         this.loadMeta();
         // Open Food Facts auto-enrichment is off: coverage for Israeli barcodes
         // is <1%, so the old loop cost minutes of background requests per visit
@@ -187,16 +174,26 @@
       },
 
       // ── browse tiles ─────────────────────────────────────────────────────
-      catTiles() { return CATS; },
+      async loadCats() {
+        try { this.tiles = (await api.cats(this.selectedIds)).tiles || []; }
+        catch (_) { this.tiles = []; }
+      },
+      catTiles() { return this.tiles; },
+      tileLabel(c) { return this.t('cat_' + c.key); },
+      tileImage(c) { return c.image || this.placeholder((c.cats || 'default').split(',')[0]); },
+      activeCatLabel() {
+        const c = this.tiles.find(t => t.cats === this.activeCat);
+        return c ? this.tileLabel(c) : '';
+      },
       setCat(cats) {
         this.activeCat = this.activeCat === cats ? '' : cats;
         this.query = '';
-        this.search();
+        if (this.activeCat) this.search(); else this.products = [];
       },
       goHome() {
         this.query = ''; this.activeCat = '';
         this.dealsOnly = false; this.dealKind = '';
-        this.search();
+        this.products = [];   // grid is hidden on the landing; nothing to fetch
       },
 
       // ── near me ──────────────────────────────────────────────────────────
@@ -247,6 +244,9 @@
       },
 
       async search() {
+        // On the landing the grid is hidden — clearing the query/filters just
+        // returns home, no catalog fetch needed.
+        if (this.homeMode()) { this.products = []; this.openPromoCode = null; this.loading = false; return; }
         this.loading = true;
         this.openPromoCode = null;
         try {
@@ -347,6 +347,7 @@
         localStorage.setItem(STORE_KEY, JSON.stringify(this.selectedIds));
         this.search();
         this.loadRadar();
+        this.loadCats();
       },
       toggleStore(key) {
         if (this.selectedIds.includes(key)) {
@@ -369,7 +370,7 @@
       resetStores() {
         localStorage.removeItem(STORE_KEY);
         this.selectedIds = [];
-        this.loadStores().then(() => this.search());
+        this.loadStores().then(() => { this.search(); this.loadRadar(); this.loadCats(); });
       },
 
       // ── product / price helpers ──────────────────────────────────────────

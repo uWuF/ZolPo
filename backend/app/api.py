@@ -78,6 +78,13 @@ def api_deals(stores: str = Query("", description="comma-separated universal sto
     return {"results": search.deals_feed(keys, deal_kind=kind, limit=limit)}
 
 
+@app.get("/api/cats")
+def api_cats(stores: str = Query("", description="comma-separated universal store keys")):
+    """Landing category tiles: per-tile product count + representative photo."""
+    keys = [s for s in stores.split(",") if s]
+    return {"tiles": search.category_tiles(keys)}
+
+
 @app.get("/api/product/{item_code}")
 def api_product(item_code: str):
     product = search.get_product(item_code)   # exact barcode match, not LIKE

@@ -110,6 +110,40 @@ class ClassifyPromo(unittest.TestCase):
         self.assertEqual(classify_promo("לחברי מועדון בלבד", None, None), "club")
         self.assertEqual(classify_promo("פיצוי משקאות", None, None), "other")
 
+    def test_spec_percent_is_not_a_discount(self):
+        """Fat/alcohol percentages in product names must not become % promos."""
+        from ingest.promos import classify_promo
+        # ayran 3% fat, 500ml, fixed price 9.90 — was misclassified percent_off
+        self.assertEqual(classify_promo("גד משקה איירן בסגנון בלקני  5003%מל", 1, 9.9),
+                         "fixed_price")
+        # Tiv-Taam style: leading price, fat % in the name, no DiscountedPrice
+        self.assertEqual(classify_promo("23.90 יוגורט יווני6.5% 8י130*ג", 10, None),
+                         "fixed_price")
+        self.assertEqual(classify_promo("169 גבינת ברי צרפתית 32% במשקל", 10, None),
+                         "fixed_price")
+        # real percent discounts still classify
+        self.assertEqual(classify_promo("הנחה 10% על פירות וירקות", None, None),
+                         "percent_off")
+        self.assertEqual(classify_promo("20% על כל היין", None, None), "percent_off")
+        # club sign-up prices
+        self.assertEqual(classify_promo('תחליב רחצה ב-5.90 ש"ח מצטרפים', 1, 5.9), "club")
+
+
+class GuessCategory(unittest.TestCase):
+    def test_wolt_style_buckets(self):
+        from app.images import guess_category
+        self.assertEqual(guess_category("בירה גולדסטאר פחית 500מל"), "alcohol")
+        self.assertEqual(guess_category("יין אדום קברנה"), "alcohol")
+        self.assertEqual(guess_category("מעיין מים מינרלים 1.5"), "water")   # not alcohol
+        self.assertEqual(guess_category("שניצל עוף קפוא 700ג"), "frozen")
+        self.assertEqual(guess_category("גלידה וניל 1.5 ליטר"), "frozen")
+        self.assertEqual(guess_category("חיתולים מידה 4"), "baby")
+        self.assertEqual(guess_category("מזון לחתול 400ג"), "pet")
+        self.assertEqual(guess_category("שוקולד מריר 100ג"), "sweet")
+        self.assertEqual(guess_category("קטשופ היינץ 700ג"), "canned")
+        self.assertEqual(guess_category("קמח לבן 1 קג"), "baking")
+        self.assertEqual(guess_category("יוגורט תות 150ג"), "milk")
+
 
 class ParseKeys(unittest.TestCase):
     def test_valid_and_malformed(self):
