@@ -4,7 +4,8 @@
       "Bash(python3 -m pip install --quiet fastapi \"uvicorn[standard]\" requests)",
       "Bash(echo \"exit:$?\")",
       "Bash(.venv312/bin/python scripts/download.py)",
-      "Bash(.venv312/bin/python scripts/ingest.py)"
+      "Bash(.venv312/bin/python scripts/ingest.py)",
+      "Bash(.venv312/bin/python scripts/promos.py)"
     ]
   }
 }
