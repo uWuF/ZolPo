@@ -1,7 +1,7 @@
 """
 SQLite schema and access helpers.
 
-Four tables:
+Tables:
   products      – one row per barcode (the cross-chain join key), as published
                   in the government price files. Cheap to rebuild: a reset
                   ingest clears and refills it.
@@ -10,7 +10,13 @@ Four tables:
                   so a reset ingest never wipes work that took network time or
                   money to produce (image resolving, future LLM translations).
   stores        – one row per (chain_id, store_id)
-  prices        – one row per (item_code, chain_id, store_id)
+  prices        – one row per (item_code, chain_id, store_id): the CURRENT price
+  price_history – append-only price observations over time, delta-compressed
+                  (a row only when a price first appears or changes). Like
+                  product_meta it SURVIVES reset ingests — it is the accumulating
+                  asset behind price graphs, deal-honesty checks and alerts,
+                  and it can never be rebuilt from a later download.
+  promos / promo_items – current promotions per store (refreshed wholesale).
 
 The (chain_id, store_id) composite is what lets us hold many chains in one DB
 without store-id collisions.
@@ -18,6 +24,7 @@ without store-id collisions.
 
 from __future__ import annotations
 
+import datetime as _dt
 import sqlite3
 from contextlib import contextmanager
 
@@ -101,6 +108,21 @@ def init_db() -> None:
                 PRIMARY KEY (chain_id, store_id, promo_id, item_code)
             );
 
+            -- Append-only price archive. One row per (item, store, day) — the
+            -- composite PK is what keeps observations from ever mixing. Delta-
+            -- compressed: a day is recorded only when the price differs from
+            -- the last recorded one (reconstruct any date as "the newest row
+            -- at or before it"). NEVER cleared by reset ingests. WITHOUT ROWID:
+            -- the PK covers the whole row, saving ~30% at archive scale.
+            CREATE TABLE IF NOT EXISTS price_history (
+                item_code TEXT NOT NULL,
+                chain_id  INTEGER NOT NULL,
+                store_id  TEXT NOT NULL,
+                day       TEXT NOT NULL,   -- 'YYYY-MM-DD' observation date
+                price     REAL NOT NULL,
+                PRIMARY KEY (item_code, chain_id, store_id, day)
+            ) WITHOUT ROWID;
+
             CREATE INDEX IF NOT EXISTS idx_products_name ON products(item_name);
             CREATE INDEX IF NOT EXISTS idx_prices_item   ON prices(item_code);
             CREATE INDEX IF NOT EXISTS idx_prices_store  ON prices(chain_id, store_id);
@@ -178,6 +200,42 @@ def upsert_store(conn, store_id, chain_id, store_name, city, address):
         """,
         (store_id, chain_id, store_name, city, address),
     )
+
+
+def record_price_history(conn, day: str | None = None) -> int:
+    """
+    Append the current `prices` snapshot to `price_history`, delta-compressed:
+    a row is written only when an (item, store) price first appears or differs
+    from the last recorded one. The very first run therefore records the whole
+    catalog as the baseline. Idempotent within a day (PK upsert). Returns the
+    number of rows written.
+
+    Called at the end of every ingest — this is the append-only asset that
+    price graphs, "is this deal real?" checks and price alerts read from, so
+    it must never be wiped (reset ingests clear `prices`, not this).
+    """
+    day = day or _dt.date.today().isoformat()
+    cur = conn.execute(
+        """
+        INSERT OR REPLACE INTO price_history (item_code, chain_id, store_id, day, price)
+        SELECT pr.item_code, pr.chain_id, pr.store_id, ?, pr.price
+        FROM prices pr
+        LEFT JOIN (
+            SELECT h.item_code, h.chain_id, h.store_id, h.price
+            FROM price_history h
+            JOIN (SELECT item_code, chain_id, store_id, MAX(day) AS day
+                  FROM price_history
+                  GROUP BY item_code, chain_id, store_id) m
+              ON  m.item_code = h.item_code AND m.chain_id = h.chain_id
+              AND m.store_id  = h.store_id  AND m.day      = h.day
+        ) last
+          ON  last.item_code = pr.item_code AND last.chain_id = pr.chain_id
+          AND last.store_id  = pr.store_id
+        WHERE last.price IS NULL OR last.price <> pr.price
+        """,
+        (day,),
+    )
+    return cur.rowcount
 
 
 def upsert_price(conn, item_code, chain_id, store_id, price, update_date):

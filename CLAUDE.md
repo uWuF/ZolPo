@@ -94,13 +94,20 @@ Portal quirks (XML dialect differences, filename formats, stub/empty-file
 edge cases) are documented in `docs/DATA_SOURCES.md` and in each
 `ingest/<portal>.py` module's docstring.
 
-### `products` vs `product_meta` — deliberate lifecycle split
+### `products` vs `product_meta` vs `price_history` — deliberate lifecycle split
 `products` (name, category, manufacturer) is wiped and rebuilt wholesale on
 every `scripts/ingest.py` run (unless `--keep`) — it's a direct projection of
 the current gov price files. `product_meta` (English name, image URL/source)
 is enrichment that costs network time or money to produce and **survives
 reset ingests**; never derive it inside the reset path, and `upsert_product`
 must not let a later chain's empty name blank out an already-known one.
+`price_history` is append-only and also **survives resets** — every ingest
+ends with `record_price_history()` (db.py), which archives delta-compressed
+observations (a row per (item, store, day) only when the price first appears
+or changes). It can never be rebuilt from a later download (portals serve only
+current files), so no code path may ever DELETE from it. Served by
+`GET /api/history/{item_code}`; it's the substrate for price graphs,
+deal-honesty checks and alerts.
 
 ### Promotions (`ingest/promos.py`)
 Two XML dialects across chains: `<Item>` + `PromotionEndDate` (Cerberus/Bina

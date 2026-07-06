@@ -211,6 +211,35 @@ class DbFixture(unittest.TestCase):
         res = search_products("קוטג")
         self.assertEqual(res[0]["image_url"], "https://img.example/cottage.jpg")  # survived
 
+    def test_price_history_delta_and_reset_survival(self):
+        from app.search import price_history
+
+        def hist(conn):
+            return conn.execute(
+                "SELECT day, price FROM price_history "
+                "WHERE item_code='7290004127329' AND chain_id=1 AND store_id='11' "
+                "ORDER BY day").fetchall()
+
+        with db.get_db() as conn:
+            # Day 1: baseline — both store prices get recorded.
+            self.assertEqual(db.record_price_history(conn, "2026-07-01"), 2)
+            # Day 2: nothing changed — delta compression writes nothing.
+            self.assertEqual(db.record_price_history(conn, "2026-07-02"), 0)
+            # Day 3: one price changes — exactly one new row.
+            db.upsert_price(conn, "7290004127329", 1, "11", 7.90, "2026-07-03 02:00:00")
+            self.assertEqual(db.record_price_history(conn, "2026-07-03"), 1)
+            self.assertEqual([(r["day"], r["price"]) for r in hist(conn)],
+                             [("2026-07-01", 6.9), ("2026-07-03", 7.9)])
+            # Reset ingest wipes prices — the archive must keep every row.
+            conn.executescript("DELETE FROM prices; DELETE FROM products; DELETE FROM stores;")
+            self.assertEqual(len(hist(conn)), 2)
+            self.assertEqual(db.record_price_history(conn, "2026-07-04"), 0)  # empty prices → no-op
+
+        # The API series includes a pre-window change as the baseline point.
+        series = price_history("7290004127329", ["1:11"], days=36500)
+        self.assertEqual(series, [{"key": "1:11", "points": [
+            {"day": "2026-07-01", "price": 6.9}, {"day": "2026-07-03", "price": 7.9}]}])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

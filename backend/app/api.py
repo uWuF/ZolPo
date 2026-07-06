@@ -93,6 +93,16 @@ def api_product(item_code: str):
     return product
 
 
+@app.get("/api/history/{item_code}")
+def api_history(item_code: str,
+                stores: str = Query("", description="comma-separated universal store keys"),
+                days: int = Query(90, ge=1, le=730)):
+    """Per-store price series from the append-only price_history archive."""
+    keys = [s for s in stores.split(",") if s]
+    return {"item_code": item_code, "days": days,
+            "series": search.price_history(item_code, keys, days)}
+
+
 @app.get("/api/stores")
 def api_stores():
     return registry.public_stores()

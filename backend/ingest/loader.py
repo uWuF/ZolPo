@@ -14,7 +14,8 @@ import re
 import xml.etree.ElementTree as ET
 
 from app.config import CHAINS, dump_dir
-from app.db import get_db, init_db, upsert_price, upsert_product, upsert_store
+from app.db import (get_db, init_db, record_price_history, upsert_price,
+                    upsert_product, upsert_store)
 from app.images import guess_category
 from app import registry
 
@@ -115,4 +116,9 @@ def ingest_registry(reset: bool = True) -> dict:
             stats.append({"key": store.get("key"), "label": store.get("label_en"),
                           "chain": chain_key, "products": count, "last_update": ts})
 
-    return {"stores": stats}
+        # Archive the fresh snapshot into the append-only history (delta rows
+        # only). This runs inside the same transaction as the load, so a failed
+        # ingest archives nothing.
+        history_rows = record_price_history(conn)
+
+    return {"stores": stats, "history_rows": history_rows}

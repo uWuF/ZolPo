@@ -16,6 +16,8 @@ Product identity lives in `products` (from the gov files); the display extras
 
 from __future__ import annotations
 
+import datetime as _dt
+
 from .db import get_db
 
 _PRODUCT_SELECT = """
@@ -384,3 +386,38 @@ def get_product(item_code: str) -> dict | None:
         if row is None:
             return None
         return _attach_prices(conn, [row], [])[0]
+
+
+def price_history(item_code: str, store_keys: list[str] | None = None,
+                  days: int = 90) -> list[dict]:
+    """
+    Per-store price series for one barcode from the append-only archive.
+    History rows are delta-compressed (a row = the day the price changed), so
+    each series also carries the last change *before* the window as its
+    baseline — otherwise a stable price would produce an empty graph.
+    Returns [{key, points: [{day, price}, …]}, …], points oldest-first.
+    """
+    pairs = _parse_keys(store_keys)
+    cutoff = (_dt.date.today() - _dt.timedelta(days=days)).isoformat()
+    tuple_clause, tuple_params = _tuple_filter(pairs)
+    store_filter = f" AND (chain_id, store_id) IN {tuple_clause}" if pairs else ""
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT chain_id, store_id, day, price FROM price_history
+                WHERE item_code = ?{store_filter}
+                ORDER BY chain_id, store_id, day""",
+            (item_code, *tuple_params)).fetchall()
+    series: dict[str, dict] = {}
+    for r in rows:
+        key = f"{r['chain_id']}:{r['store_id']}"
+        s = series.setdefault(key, {"key": key, "baseline": None, "points": []})
+        if r["day"] < cutoff:
+            s["baseline"] = {"day": r["day"], "price": r["price"]}  # newest pre-window change
+        else:
+            s["points"].append({"day": r["day"], "price": r["price"]})
+    out = []
+    for s in series.values():
+        pts = ([s["baseline"]] if s["baseline"] else []) + s["points"]
+        if pts:
+            out.append({"key": s["key"], "points": pts})
+    return out

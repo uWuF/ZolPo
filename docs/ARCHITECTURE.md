@@ -65,12 +65,13 @@ command never has to change.
 ## Database schema
 
 ```sql
-products     (item_code PK, item_name, manufacture_name, category)          -- from gov files; reset-able
-product_meta (item_code PK, item_name_en, image_url, image_source, enriched) -- derived; SURVIVES re-ingest
-stores       (chain_id, store_id, store_name, city, address,  PK(chain_id, store_id))
-prices       (item_code, chain_id, store_id, price, update_date,  PK(item_code, chain_id, store_id))
-promos       (chain_id, store_id, promo_id, description, end_date, min_qty, price, kind,  PK(chain,store,promo))
-promo_items  (chain_id, store_id, promo_id, item_code,  PK(chain,store,promo,item))
+products      (item_code PK, item_name, manufacture_name, category)          -- from gov files; reset-able
+product_meta  (item_code PK, item_name_en, image_url, image_source, enriched) -- derived; SURVIVES re-ingest
+stores        (chain_id, store_id, store_name, city, address,  PK(chain_id, store_id))
+prices        (item_code, chain_id, store_id, price, update_date,  PK(item_code, chain_id, store_id))  -- CURRENT price
+price_history (item_code, chain_id, store_id, day, price,  PK(item, chain, store, day))  -- append-only; SURVIVES re-ingest
+promos        (chain_id, store_id, promo_id, description, end_date, min_qty, price, kind,  PK(chain,store,promo))
+promo_items   (chain_id, store_id, promo_id, item_code,  PK(chain,store,promo,item))
 ```
 
 The `products` / `product_meta` split is deliberate lifecycle separation:
@@ -80,6 +81,16 @@ to produce — resolved image URLs and English names. A full re-ingest keeps all
 of it. `item_name_en` is the seam for proper English: the frontend shows it
 verbatim when set (today OFF/manual, next an LLM batch pass), falling back to
 transliteration otherwise.
+
+`price_history` is the third lifecycle class: an **append-only archive** that
+can never be rebuilt from a later download (the portals only serve current
+files). Every ingest ends with `record_price_history()`, which writes
+delta-compressed observations — a row only when an (item, store) price first
+appears or changes; any date reconstructs as "newest row at or before it".
+Served by `GET /api/history/{item_code}` as per-store series (with the last
+pre-window change included as the baseline point). This table is the raw
+material for price graphs, deal-honesty checks ("was it really ₪50 before the
+'sale'?") and price alerts.
 
 ## Frontend
 
