@@ -22,9 +22,23 @@ from .db import get_db
 
 _PRODUCT_SELECT = """
     SELECT p.item_code, p.item_name, m.item_name_en, p.manufacture_name,
-           m.image_url, p.category
+           m.image_url, p.category, p.is_weighted, p.unit_of_measure
     FROM products p LEFT JOIN product_meta m ON m.item_code = p.item_code
 """
+
+
+def _internal_code(code: str) -> bool:
+    """
+    A store-internal code, not a globally-unique barcode: short PLU codes and
+    embedded-price EAN-13 (prefix '2', the GS1 restricted / in-store range).
+    Such a code means DIFFERENT products in different chains (chain A's "10" is
+    a pear, chain B's "10" is something else), so it must never be matched
+    across chains. Real EAN-8/12/13 (not starting with 2) are global and safe.
+    """
+    c = (code or "").strip()
+    if not c.isdigit():
+        return False
+    return len(c) < 8 or (len(c) == 13 and c.startswith("2"))
 
 
 def _parse_keys(keys: list[str] | None) -> list[tuple[int, str]]:
@@ -58,10 +72,24 @@ def _tuple_filter(pairs: list[tuple[int, str]]) -> tuple[str, list]:
     return clause, params
 
 
+def _dominant_chain(store_map: dict) -> str:
+    """The chain (of a 'chain:store' key map) with the most stores; ties → lowest id."""
+    counts: dict[str, int] = {}
+    for k in store_map:
+        ch = k.split(":", 1)[0]
+        counts[ch] = counts.get(ch, 0) + 1
+    return sorted(counts, key=lambda ch: (-counts[ch], int(ch)))[0]
+
+
 def _attach_prices(conn, rows, pairs) -> list[dict]:
-    """Two grouped queries: cheapest price + active promo per (product, store)."""
+    """Cheapest price + unit price + active promos per (product, store).
+
+    For store-internal codes (see `_internal_code`) the maps are collapsed to a
+    single chain, because the same code is a different product in another chain
+    — cross-chain comparison there would be a false match."""
     codes = [r["item_code"] for r in rows]
     prices_by_code: dict[str, dict] = {c: {} for c in codes}
+    units_by_code: dict[str, dict] = {c: {} for c in codes}
     promos_by_code: dict[str, dict] = {c: {} for c in codes}
     if codes:
         tuple_clause, tuple_params = _tuple_filter(pairs)
@@ -69,7 +97,8 @@ def _attach_prices(conn, rows, pairs) -> list[dict]:
 
         store_filter = f" AND (chain_id, store_id) IN {tuple_clause}" if pairs else ""
         grouped = conn.execute(
-            f"SELECT item_code, chain_id, store_id, MIN(price) AS price FROM prices "
+            f"SELECT item_code, chain_id, store_id, MIN(price) AS price, "
+            f"       MIN(unit_price) AS unit_price FROM prices "
             f"WHERE item_code IN ({placeholders}){store_filter} "
             f"GROUP BY item_code, chain_id, store_id",
             (*codes, *tuple_params),
@@ -77,6 +106,8 @@ def _attach_prices(conn, rows, pairs) -> list[dict]:
         for pr in grouped:
             key = f"{pr['chain_id']}:{pr['store_id']}"
             prices_by_code[pr["item_code"]][key] = round(pr["price"], 2)
+            if pr["unit_price"] is not None:
+                units_by_code[pr["item_code"]][key] = round(pr["unit_price"], 2)
 
         promo_filter = (f" AND (pi.chain_id, pi.store_id) IN {tuple_clause}" if pairs else "")
         promo_rows = conn.execute(
@@ -101,6 +132,21 @@ def _attach_prices(conn, rows, pairs) -> list[dict]:
                 {"text": pr["description"], "qty": pr["min_qty"],
                  "price": pr["price"], "end": pr["end_date"], "kind": pr["kind"]})
 
+        # Phase-0: a store-internal code is a different product per chain — keep
+        # only its dominant chain's stores so nothing is compared across chains.
+        for code in codes:
+            pmap = prices_by_code[code]
+            if not _internal_code(code) or len({k.split(":", 1)[0] for k in pmap}) <= 1:
+                continue
+            ch = _dominant_chain(pmap)
+            keep = lambda m: {k: v for k, v in m.items() if k.split(":", 1)[0] == ch}
+            prices_by_code[code] = keep(pmap)
+            units_by_code[code] = keep(units_by_code[code])
+            promos_by_code[code] = keep(promos_by_code[code])
+
+    def _get(r, col):
+        return r[col] if col in r.keys() else None
+
     return [
         {
             "item_code": r["item_code"],
@@ -109,7 +155,11 @@ def _attach_prices(conn, rows, pairs) -> list[dict]:
             "manufacture_name": r["manufacture_name"],
             "image_url": r["image_url"],
             "category": r["category"],
+            "is_weighted": _get(r, "is_weighted"),
+            "unit_of_measure": _get(r, "unit_of_measure"),
+            "internal_code": _internal_code(r["item_code"]),
             "prices": prices_by_code[r["item_code"]],
+            "unit_prices": units_by_code[r["item_code"]],
             "promos": promos_by_code[r["item_code"]],
         }
         for r in rows
@@ -269,7 +319,7 @@ def search_products(term: str, limit: int = 60, store_keys: list[str] | None = N
         params = params[:n_cats] + params[n_cats + len(tuple_params):]
         sql = f"""
             SELECT p.item_code, p.item_name, m.item_name_en, p.manufacture_name,
-                   m.image_url, p.category
+                   m.image_url, p.category, p.is_weighted, p.unit_of_measure
             FROM prices pr
             JOIN products p ON p.item_code = pr.item_code
             LEFT JOIN product_meta m ON m.item_code = p.item_code

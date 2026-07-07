@@ -201,6 +201,39 @@ class DbFixture(unittest.TestCase):
         # A text query must not LIKE-match into barcodes.
         self.assertEqual(search_products("xyz"), [])
 
+    def test_internal_code_not_matched_across_chains(self):
+        # "10" is a store-internal PLU: a pear at chain 1, something else at
+        # chain 2 — the same code must NOT merge them into one comparison.
+        from app.search import get_product, _internal_code
+        self.assertTrue(_internal_code("10"))
+        self.assertFalse(_internal_code("7290004127329"))   # real EAN-13
+        self.assertTrue(_internal_code("2123456789012"))    # embedded-price EAN
+        with db.get_db() as conn:
+            db.upsert_product(conn, "10", "אגס", None, "fruit", is_weighted=1)
+            db.upsert_price(conn, "10", 1, "11", 8.90, "2026-06-30 02:00:00")
+            db.upsert_price(conn, "10", 2, "733", 5.90, "2026-06-30 02:00:00")
+        p = get_product("10")
+        chains = {k.split(":")[0] for k in p["prices"]}
+        self.assertEqual(len(chains), 1)                    # collapsed to one chain
+        self.assertTrue(p["internal_code"])
+        # a real EAN in two chains stays a cross-chain comparison
+        cottage = get_product("7290004127329")
+        self.assertEqual({k.split(":")[0] for k in cottage["prices"]}, {"1", "2"})
+        self.assertFalse(cottage["internal_code"])
+
+    def test_unit_fields_captured_and_exposed(self):
+        # Phase-1: weight/unit metadata + per-store ₪/measure survive to the API.
+        with db.get_db() as conn:
+            db.upsert_product(conn, "7290000000046", "מלפפון", None, "vegetable",
+                              is_weighted=1, unit_qty="קילוגרם",
+                              unit_of_measure="1קילוגרם", quantity=1.0)
+            db.upsert_price(conn, "7290000000046", 1, "11", 6.90,
+                            "2026-06-30 02:00:00", unit_price=6.90)
+        p = get_product("7290000000046")
+        self.assertEqual(p["is_weighted"], 1)
+        self.assertEqual(p["unit_of_measure"], "1קילוגרם")
+        self.assertEqual(p["unit_prices"], {"1:11": 6.9})
+
     def test_meta_survives_reset_ingest(self):
         # Simulate ingest_registry(reset=True): wipe the resettable tables …
         with db.get_db() as conn:

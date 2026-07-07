@@ -55,8 +55,19 @@ def newest_pricefull(chain_key: str, store_id: str) -> str | None:
     return sorted(files)[-1] if files else None
 
 
+def _fnum(s):
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
 def iter_items(path: str):
-    """Yield (item_code, item_name, manufacturer, price) for each priced item."""
+    """
+    Yield a dict per priced item: code, name, manuf, price, plus the weight/unit
+    fields (unit_price = gov UnitOfMeasurePrice, is_weighted, unit_qty,
+    unit_of_measure, quantity) that Phase-1 captures for ₪/kg normalization.
+    """
     raw = open(path, "rb").read()
     if raw[:2] == b"\x1f\x8b":
         import gzip
@@ -72,7 +83,17 @@ def iter_items(path: str):
         except ValueError:
             continue
         # ItemNm is the Bina/City-Market spelling of ItemName.
-        yield code, _text(it, "ItemName", "ItemNm"), _text(it, "ManufactureName", "ManufacturerName"), price
+        yield {
+            "code": code,
+            "name": _text(it, "ItemName", "ItemNm"),
+            "manuf": _text(it, "ManufactureName", "ManufacturerName"),
+            "price": price,
+            "unit_price": _fnum(_text(it, "UnitOfMeasurePrice")),
+            "is_weighted": 1 if _text(it, "bIsWeighted", "BisWeighted") in ("1", "true") else 0,
+            "unit_qty": _text(it, "UnitQty"),
+            "unit_of_measure": _text(it, "UnitOfMeasure"),
+            "quantity": _fnum(_text(it, "Quantity")),
+        }
 
 
 def ingest_registry(reset: bool = True) -> dict:
@@ -107,11 +128,13 @@ def ingest_registry(reset: bool = True) -> dict:
             upsert_store(conn, sid, chain_int, store.get("store_name"),
                          store.get("city"), store.get("address"))
             count = 0
-            for code, name, manuf, price in iter_items(path):
+            for it in iter_items(path):
                 # Images / English names live in product_meta (resolve_images.py,
                 # enrich) and survive a reset — ingest only writes identity fields.
-                upsert_product(conn, code, name, manuf, guess_category(name))
-                upsert_price(conn, code, chain_int, sid, price, ts)
+                upsert_product(conn, it["code"], it["name"], it["manuf"],
+                               guess_category(it["name"]), it["is_weighted"],
+                               it["unit_qty"], it["unit_of_measure"], it["quantity"])
+                upsert_price(conn, it["code"], chain_int, sid, it["price"], ts, it["unit_price"])
                 count += 1
             stats.append({"key": store.get("key"), "label": store.get("label_en"),
                           "chain": chain_key, "products": count, "last_update": ts})

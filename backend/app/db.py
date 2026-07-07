@@ -56,7 +56,11 @@ def init_db() -> None:
                 item_code        TEXT PRIMARY KEY,   -- EAN/UPC barcode: the cross-chain join key
                 item_name        TEXT NOT NULL,
                 manufacture_name TEXT,
-                category         TEXT                -- keyword used for the SVG placeholder
+                category         TEXT,               -- keyword used for the SVG placeholder
+                is_weighted      INTEGER DEFAULT 0,  -- gov bIsWeighted: sold by weight, not per unit
+                unit_qty         TEXT,               -- gov UnitQty, e.g. "קילוגרם" / "מיליליטר"
+                unit_of_measure  TEXT,               -- gov UnitOfMeasure basis, e.g. "1 קילוגרם"
+                quantity         REAL                -- gov Quantity: pack size in unit_qty
             );
 
             CREATE TABLE IF NOT EXISTS product_meta (
@@ -81,6 +85,7 @@ def init_db() -> None:
                 chain_id    INTEGER NOT NULL,
                 store_id    TEXT NOT NULL,
                 price       REAL NOT NULL,
+                unit_price  REAL,                -- gov UnitOfMeasurePrice: ₪ per unit_of_measure
                 update_date TEXT NOT NULL,
                 PRIMARY KEY (item_code, chain_id, store_id),
                 FOREIGN KEY (item_code) REFERENCES products(item_code)
@@ -131,6 +136,7 @@ def init_db() -> None:
         )
         _migrate_meta(conn)
         _migrate_promo_kind(conn)
+        _migrate_units(conn)
 
 
 def _migrate_promo_kind(conn) -> None:
@@ -138,6 +144,18 @@ def _migrate_promo_kind(conn) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(promos)")}
     if cols and "kind" not in cols:
         conn.execute("ALTER TABLE promos ADD COLUMN kind TEXT")
+
+
+def _migrate_units(conn) -> None:
+    """Add the weight/unit columns on DBs created before ₪/kg normalization."""
+    pcols = {r[1] for r in conn.execute("PRAGMA table_info(products)")}
+    for col, decl in (("is_weighted", "INTEGER DEFAULT 0"), ("unit_qty", "TEXT"),
+                      ("unit_of_measure", "TEXT"), ("quantity", "REAL")):
+        if pcols and col not in pcols:
+            conn.execute(f"ALTER TABLE products ADD COLUMN {col} {decl}")
+    prcols = {r[1] for r in conn.execute("PRAGMA table_info(prices)")}
+    if prcols and "unit_price" not in prcols:
+        conn.execute("ALTER TABLE prices ADD COLUMN unit_price REAL")
 
 
 def _migrate_meta(conn) -> None:
@@ -171,20 +189,28 @@ def db_is_empty() -> bool:
 # Write helpers (used by the ingest pipeline)
 # --------------------------------------------------------------------------- #
 
-def upsert_product(conn, item_code, item_name, manufacture_name, category):
+def upsert_product(conn, item_code, item_name, manufacture_name, category,
+                   is_weighted=None, unit_qty=None, unit_of_measure=None, quantity=None):
     # First non-empty value wins: chains load in registry order (Shufersal
     # first, with the best names), and a later chain's empty <ItemNm> must
     # never blank out a good name (that's how 5k products lost theirs once).
+    # The unit fields follow the same keep-first-known rule.
     conn.execute(
         """
-        INSERT INTO products (item_code, item_name, manufacture_name, category)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO products (item_code, item_name, manufacture_name, category,
+                              is_weighted, unit_qty, unit_of_measure, quantity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(item_code) DO UPDATE SET
             item_name        = COALESCE(NULLIF(products.item_name, ''), excluded.item_name),
             manufacture_name = COALESCE(NULLIF(products.manufacture_name, ''), excluded.manufacture_name),
-            category         = COALESCE(NULLIF(products.category, ''), excluded.category)
+            category         = COALESCE(NULLIF(products.category, ''), excluded.category),
+            is_weighted      = COALESCE(products.is_weighted, excluded.is_weighted),
+            unit_qty         = COALESCE(NULLIF(products.unit_qty, ''), excluded.unit_qty),
+            unit_of_measure  = COALESCE(NULLIF(products.unit_of_measure, ''), excluded.unit_of_measure),
+            quantity         = COALESCE(products.quantity, excluded.quantity)
         """,
-        (item_code, item_name, manufacture_name, category),
+        (item_code, item_name, manufacture_name, category,
+         is_weighted, unit_qty, unit_of_measure, quantity),
     )
 
 
@@ -238,14 +264,15 @@ def record_price_history(conn, day: str | None = None) -> int:
     return cur.rowcount
 
 
-def upsert_price(conn, item_code, chain_id, store_id, price, update_date):
+def upsert_price(conn, item_code, chain_id, store_id, price, update_date, unit_price=None):
     conn.execute(
         """
-        INSERT INTO prices (item_code, chain_id, store_id, price, update_date)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO prices (item_code, chain_id, store_id, price, unit_price, update_date)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(item_code, chain_id, store_id) DO UPDATE SET
             price       = excluded.price,
+            unit_price  = excluded.unit_price,
             update_date = excluded.update_date
         """,
-        (item_code, chain_id, store_id, price, update_date),
+        (item_code, chain_id, store_id, price, unit_price, update_date),
     )
