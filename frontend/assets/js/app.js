@@ -40,6 +40,12 @@
   // categories + product count + a representative product photo). Labels are
   // i18n keys 'cat_<key>'.
 
+  // Leaflet objects live OUTSIDE Alpine's reactive state on purpose: wrapping a
+  // Leaflet map in a reactive Proxy breaks its internals. Module scope is fine —
+  // there is only ever one zolpo() component.
+  let _map = null, _cluster = null, _markers = {};
+  const TA_CENTER = [32.0785, 34.7818];   // Tel Aviv-Yafo
+
   function zolpo() {
     return {
       query:          '',
@@ -101,6 +107,8 @@
         this.loading = false;
         await Promise.all([this.loadRadar(), this.loadCats()]);
         this.loadMeta();
+        // Map needs the stores (coords) loaded and its container laid out.
+        this.$nextTick(() => this.initMap());
         // Open Food Facts auto-enrichment is off: coverage for Israeli barcodes
         // is <1%, so the old loop cost minutes of background requests per visit
         // for almost nothing. Images come from scripts/resolve_images.py and
@@ -194,6 +202,8 @@
         this.query = ''; this.activeCat = '';
         this.dealsOnly = false; this.dealKind = '';
         this.products = [];   // grid is hidden on the landing; nothing to fetch
+        // The map div was display:none while browsing — Leaflet must re-measure.
+        this.$nextTick(() => { if (_map) _map.invalidateSize(); });
       },
 
       // ── near me ──────────────────────────────────────────────────────────
@@ -226,6 +236,85 @@
           this.selectedIds = nearest.map(s => s.key);
           this._persist();
         }
+        if (_map) _map.setView([lat, lon], 14);
+      },
+
+      // ── store map (Leaflet + clustering) ───────────────────────────────────
+      initMap() {
+        if (_map || typeof L === 'undefined') return;
+        const el = document.getElementById('zp-map');
+        if (!el) return;
+        _map = L.map(el, { scrollWheelZoom: false, attributionControl: false })
+                .setView(TA_CENTER, 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    { maxZoom: 19 }).addTo(_map);
+        _cluster = L.markerClusterGroup({
+          maxClusterRadius: 48, showCoverageOnHover: false,
+          spiderfyOnMaxZoom: true,
+        });
+        _markers = {};
+        for (const s of this.stores) {
+          if (!s.lat || !s.lon) continue;
+          const m = L.marker([s.lat, s.lon], { icon: this._pin(s), title: this.storeLabel(s) });
+          m.on('click', () => this.openStorePin(s, m));
+          _markers[s.key] = m;
+          _cluster.addLayer(m);
+        }
+        _map.addLayer(_cluster);
+        // Fixed Tel Aviv view — a few stores are mis-geocoded to the Jerusalem
+        // area, so fitBounds would zoom the whole country out. The app is
+        // TA-scoped; "Near me" recenters on the user.
+        _map.setView(TA_CENTER, 12);
+      },
+      _pin(s) {
+        // A coloured teardrop in the chain's colour — matches the price-row dots.
+        const c = this.chainColor(s);
+        return L.divIcon({
+          className: 'zp-pin', iconSize: [22, 22], iconAnchor: [11, 11],
+          html: `<span style="--pin:${c}"></span>`,
+        });
+      },
+      async openStorePin(s, marker) {
+        const head = `<div class="font-bold text-sm leading-tight ${this.lang === 'he' ? 'he' : ''}">`
+                   + this._esc(this.storeLabel(s)) + '</div>'
+                   + `<div class="text-[11px] text-slate-400 he">${this._esc(s.address || '')}</div>`;
+        marker.bindPopup(
+          `<div class="zp-pop">${head}<div class="py-3 text-center text-slate-400 text-xs">…</div></div>`,
+          { minWidth: 208, maxWidth: 232 }
+        ).openPopup();
+        let data;
+        try { data = await api.storeHighlights(s.key); }
+        catch (_) { data = { promos: [], drops: [] }; }
+        marker.setPopupContent(`<div class="zp-pop">${head}${this._pinBody(data)}</div>`);
+      },
+      _pinBody(data) {
+        const promos = (data.promos || []).slice(0, 3);
+        const drops = (data.drops || []).slice(0, 3);
+        if (!promos.length && !drops.length)
+          return `<div class="py-2 text-center text-slate-400 text-xs">${this.t('mapNothing')}</div>`;
+        const row = (it, tone) => {
+          const name = this.lang === 'en'
+            ? (it.item_name_en || translateProductName(it.item_name)) : it.item_name;
+          const pct = Math.round((it.save_pct || 0) * 100);
+          return `<div class="flex items-center gap-1.5 py-0.5">
+              <span class="shrink-0 px-1 rounded text-white text-[10px] font-extrabold" style="background:${tone}">-${pct}%</span>
+              <span class="flex-1 min-w-0 truncate text-[11px] ${this.lang === 'he' ? 'he' : ''}">${this._esc(name)}</span>
+              <span class="shrink-0 text-[11px] font-semibold">₪${it.now.toFixed(2)}</span>
+              <span class="shrink-0 text-[10px] text-slate-400 line-through">₪${it.was.toFixed(2)}</span>
+            </div>`;
+        };
+        let html = '';
+        if (promos.length)
+          html += `<div class="mt-1.5 mb-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600">🏷️ ${this.t('mapDeals')}</div>`
+                + promos.map(p => row(p, '#059669')).join('');
+        if (drops.length)
+          html += `<div class="mt-1.5 mb-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-500">📉 ${this.t('mapDrops')}</div>`
+                + drops.map(d => row(d, '#e11d48')).join('');
+        return html;
+      },
+      _esc(s) {
+        return (s || '').replace(/[&<>"]/g, c =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       },
 
       async _enrichLoop() {

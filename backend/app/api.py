@@ -93,6 +93,13 @@ def api_product(item_code: str):
     return product
 
 
+@app.get("/api/store-highlights")
+def api_store_highlights(store: str = Query(..., description="universal store key, e.g. 11:024"),
+                         limit: int = Query(3, ge=1, le=10)):
+    """A map pin's payload: the store's top deals + biggest recent price drops."""
+    return search.store_highlights(store, limit)
+
+
 @app.get("/api/history/{item_code}")
 def api_history(item_code: str,
                 stores: str = Query("", description="comma-separated universal store keys"),

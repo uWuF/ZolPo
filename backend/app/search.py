@@ -388,6 +388,94 @@ def get_product(item_code: str) -> dict | None:
         return _attach_prices(conn, [row], [])[0]
 
 
+def store_highlights(store_key: str, limit: int = 3) -> dict:
+    """
+    Map-pin payload for ONE store: its best real deals and its biggest recent
+    price drops. Both are measured against that store's own shelf price (never
+    another store's), matching the app-wide "carries" rule.
+
+      promos – money-promos (fixed_price / x_for_y) whose per-unit price beats
+               the shelf price by 5–90%, deepest first, one per barcode.
+      drops  – items whose latest archived price is below the previously
+               recorded one (from price_history), deepest % drop first.
+    """
+    pairs = _parse_keys([store_key])
+    if not pairs:
+        return {"promos": [], "drops": []}
+    chain_id, store_id = pairs[0]
+
+    def unit(price, qty):
+        return price / max(qty or 1, 1)
+
+    with get_db() as conn:
+        promo_rows = conn.execute(
+            """
+            SELECT pi.item_code, p.item_name, m.item_name_en, m.image_url, p.category,
+                   pr.price AS shelf, pm.price AS promo_price, pm.min_qty, pm.description
+            FROM promos pm
+            JOIN promo_items pi ON pi.chain_id = pm.chain_id AND pi.store_id = pm.store_id
+                                AND pi.promo_id = pm.promo_id
+            JOIN prices pr ON pr.item_code = pi.item_code
+                           AND pr.chain_id = pm.chain_id AND pr.store_id = pm.store_id
+            JOIN products p ON p.item_code = pi.item_code
+            LEFT JOIN product_meta m ON m.item_code = pi.item_code
+            WHERE pm.chain_id = ? AND pm.store_id = ?
+              AND (pm.end_date IS NULL OR pm.end_date = '' OR pm.end_date >= date('now'))
+              AND pm.price IS NOT NULL AND pm.price > 0 AND pr.price > 0
+              AND pm.description NOT LIKE '%מעל%'
+            ORDER BY (pr.price * max(coalesce(pm.min_qty, 1), 1) - pm.price)
+                     / (pr.price * max(coalesce(pm.min_qty, 1), 1)) DESC
+            """,
+            (chain_id, store_id),
+        ).fetchall()
+        promos, seen = [], set()
+        for r in promo_rows:
+            if r["item_code"] in seen:
+                continue
+            u = unit(r["promo_price"], r["min_qty"])
+            save = 1 - u / r["shelf"]
+            if not (0.05 < save < 0.9):
+                continue
+            seen.add(r["item_code"])
+            promos.append({
+                "item_code": r["item_code"], "item_name": r["item_name"],
+                "item_name_en": r["item_name_en"], "image_url": r["image_url"],
+                "category": r["category"], "was": round(r["shelf"], 2),
+                "now": round(u, 2), "save_pct": round(save, 3),
+                "text": r["description"], "qty": r["min_qty"]})
+            if len(promos) >= limit:
+                break
+
+        drop_rows = conn.execute(
+            """
+            WITH ranked AS (
+                SELECT item_code, day, price,
+                       ROW_NUMBER() OVER (PARTITION BY item_code ORDER BY day DESC) AS rn,
+                       LEAD(price)  OVER (PARTITION BY item_code ORDER BY day DESC) AS prev_price
+                FROM price_history
+                WHERE chain_id = ? AND store_id = ?
+            )
+            SELECT r.item_code, r.price AS now, r.prev_price AS was,
+                   p.item_name, m.item_name_en, m.image_url, p.category
+            FROM ranked r
+            JOIN products p ON p.item_code = r.item_code
+            LEFT JOIN product_meta m ON m.item_code = r.item_code
+            WHERE r.rn = 1 AND r.prev_price IS NOT NULL
+              AND r.price > 0 AND r.prev_price > r.price
+            ORDER BY (r.prev_price - r.price) / r.prev_price DESC
+            LIMIT ?
+            """,
+            (chain_id, store_id, limit),
+        ).fetchall()
+        drops = [{
+            "item_code": r["item_code"], "item_name": r["item_name"],
+            "item_name_en": r["item_name_en"], "image_url": r["image_url"],
+            "category": r["category"], "was": round(r["was"], 2), "now": round(r["now"], 2),
+            "save_pct": round(1 - r["now"] / r["was"], 3)} for r in drop_rows]
+
+    return {"promos": promos, "drops": drops}
+
+
 def price_history(item_code: str, store_keys: list[str] | None = None,
                   days: int = 90) -> list[dict]:
     """

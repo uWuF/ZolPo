@@ -27,3 +27,16 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
 /* Radar skeleton shimmer. */
 @keyframes pulse-soft { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 .pulse-soft { animation: pulse-soft 1.4s ease-in-out infinite; }
+
+/* Store-map pins: a chain-coloured dot (colour passed inline as --pin). */
+.zp-pin span {
+  display: block; width: 16px; height: 16px; border-radius: 9999px;
+  background: var(--pin, #64748b);
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35);
+}
+/* Cluster bubbles in the app's emerald, overriding markercluster's blue. */
+.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(16,185,129,.30); }
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+  background: rgba(5,150,105,.92); color: #fff; font-weight: 700;
+}
+.leaflet-popup-content { margin: 10px 12px; }

@@ -23,6 +23,8 @@
     },
     cats: (storeKeys) =>
       getJSON(`/api/cats?stores=${encodeURIComponent((storeKeys || []).join(','))}`),
+    storeHighlights: (storeKey) =>
+      getJSON(`/api/store-highlights?store=${encodeURIComponent(storeKey)}`),
     enrich: (limit = 40) => getJSON(`/api/enrich?limit=${limit}`, { method: 'POST' }),
   };
 
