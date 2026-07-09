@@ -46,6 +46,34 @@
   let _map = null, _cluster = null, _markers = {};
   const TA_CENTER = [32.0785, 34.7818];   // Tel Aviv-Yafo
 
+  // ── behavioural events ───────────────────────────────────────────────────
+  // Buffered and flushed in small batches to POST /api/events (the backend
+  // allowlists types and caps sizes). anon_id identifies the device *before*
+  // any signup; at sign-in /api/me/link-anon claims its history for the user.
+  const ANON_KEY = 'zolpo-anon-id';
+  let _anonId = localStorage.getItem(ANON_KEY);
+  if (!_anonId) {
+    _anonId = (crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    localStorage.setItem(ANON_KEY, _anonId);
+  }
+  let _evBuf = [], _evTimer = null, _lastSearchSig = '';
+  function _flushEvents() {
+    if (_evTimer) { clearTimeout(_evTimer); _evTimer = null; }
+    if (!_evBuf.length) return;
+    api.events(_anonId, _evBuf.splice(0, 25));
+  }
+  function track(type, fields) {
+    _evBuf.push(Object.assign({ type }, fields || {}));
+    if (_evBuf.length >= 20) _flushEvents();
+    else if (!_evTimer) _evTimer = setTimeout(_flushEvents, 8000);
+  }
+  // keepalive fetch survives the tab going away — flush on hide, not unload.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') _flushEvents();
+  });
+
   function zolpo() {
     return {
       query:          '',
@@ -68,6 +96,11 @@
       enrichProgress: 0,
       lastUpdate:     null,
       meta:           null,   // /api/meta payload (hero stats)
+      user:           null,   // /api/me user when signed in
+      authOpen:       false,  // sign-in modal
+      authEmail:      '',
+      authState:      'idle', // idle / sending / sent / error / expired
+      authDevLink:    null,   // dev only (no SMTP): the magic link, shown inline
 
       // ── i18n ──────────────────────────────────────────────────────────────
       t(key) { return (I18N[this.lang] || I18N.en)[key] || key; },
@@ -102,6 +135,7 @@
       async init() {
         document.documentElement.lang = this.lang;
         await this.loadStores();
+        await this.loadMe();   // may replace the selection with the synced one
         // The landing is categories + deals radar, not a product pile — no
         // initial catalog query; products load when the user picks/searches.
         this.loading = false;
@@ -145,6 +179,51 @@
         } catch (_) {}
       },
 
+      // ── account ───────────────────────────────────────────────────────────
+      async loadMe() {
+        const flag = new URLSearchParams(location.search).get('signed-in');
+        if (flag) history.replaceState(null, '', '/');
+        if (flag === 'expired') { this.authOpen = true; this.authState = 'expired'; }
+        let res;
+        try { res = await api.me(); } catch (_) { return; }
+        this.user = res.user || null;
+        if (!this.user) return;
+        if (flag === '1') {
+          // Fresh sign-in on this device: claim its pre-signup events, and
+          // record the analytics consent named in the sign-in modal text.
+          api.linkAnon(_anonId).catch(() => {});
+          if (!(res.consents || {}).analytics) api.consent('analytics', true).catch(() => {});
+          this.authOpen = false;
+        }
+        // Store selection: the synced copy wins when it exists; otherwise this
+        // device's local selection seeds the account.
+        const valid = new Set(this.stores.map(s => s.key));
+        const server = (res.stores || []).filter(k => valid.has(k));
+        if (server.length) {
+          this.selectedIds = server;
+          localStorage.setItem(STORE_KEY, JSON.stringify(server));
+        } else if (this.selectedIds.length) {
+          api.putStores(this.selectedIds).catch(() => {});
+        }
+      },
+      openAuth() {
+        this.authOpen = true; this.authState = 'idle'; this.authDevLink = null;
+      },
+      async signIn() {
+        const email = this.authEmail.trim();
+        if (!/^\S+@\S+\.\S+$/.test(email)) { this.authState = 'error'; return; }
+        this.authState = 'sending';
+        try {
+          const res = await api.requestLink(email);
+          this.authState = 'sent';
+          this.authDevLink = res.dev_link || null;   // local dev: no SMTP
+        } catch (_) { this.authState = 'error'; }
+      },
+      async signOut() {
+        try { await api.logout(); } catch (_) {}
+        this.user = null;
+      },
+
       // ── home / hero ───────────────────────────────────────────────────────
       // Home = hero + radar + browse tiles; any query/filter switches to results.
       homeMode() { return !this.query && !this.dealsOnly && !this.activeCat; },
@@ -176,6 +255,7 @@
         return this.visibleStores().find(s => this.effPrice(p, s.key) === best) || null;
       },
       openDeal(p) {
+        track('promo_click', { item_code: p.item_code });
         // Barcode search shows the single product with its full promo panel.
         this.query = p.item_code;
         this.search().then(() => { this.openPromoCode = p.item_code; });
@@ -196,7 +276,8 @@
       setCat(cats) {
         this.activeCat = this.activeCat === cats ? '' : cats;
         this.query = '';
-        if (this.activeCat) this.search(); else this.products = [];
+        if (this.activeCat) { track('category_open', { props: { cat: cats } }); this.search(); }
+        else this.products = [];
       },
       goHome() {
         this.query = ''; this.activeCat = '';
@@ -275,6 +356,7 @@
         });
       },
       async openStorePin(s, marker) {
+        track('map_store_open', { store_key: s.key });
         const head = `<div class="font-bold text-sm leading-tight ${this.lang === 'he' ? 'he' : ''}">`
                    + this._esc(this.storeLabel(s)) + '</div>'
                    + `<div class="text-[11px] text-slate-400 he">${this._esc(s.address || '')}</div>`;
@@ -342,6 +424,16 @@
           const data = await api.search(this.query, this.selectedIds, this.dealsOnly,
                                         this.dealKind, this.activeCat);
           this.products = data.results || [];
+          // Demand signal: log each distinct query/filter combination once.
+          const sig = `${this.query}|${this.activeCat}|${this.dealsOnly}|${this.dealKind}`;
+          if (sig !== _lastSearchSig && (this.query.length >= 2 || this.activeCat || this.dealsOnly)) {
+            _lastSearchSig = sig;
+            track('search', {
+              query: this.query || undefined,
+              props: { results: this.products.length, cat: this.activeCat || undefined,
+                       deals: this.dealsOnly || undefined, kind: this.dealKind || undefined },
+            });
+          }
         } catch (e) { console.error('search failed', e); this.products = []; }
         finally { this.loading = false; }
       },
@@ -384,6 +476,7 @@
       },
       togglePromoPanel(p) {
         this.openPromoCode = this.openPromoCode === p.item_code ? null : p.item_code;
+        if (this.openPromoCode) track('promo_open', { item_code: p.item_code });
       },
       promoText(pr) {
         if (!pr) return '';
@@ -434,6 +527,7 @@
       isStoreSelected(key) { return this.selectedIds.includes(key); },
       _persist() {
         localStorage.setItem(STORE_KEY, JSON.stringify(this.selectedIds));
+        if (this.user) api.putStores(this.selectedIds).catch(() => {});   // account sync
         this.search();
         this.loadRadar();
         this.loadCats();
@@ -532,6 +626,7 @@
 
       // ── basket ───────────────────────────────────────────────────────────
       addToCart(p) {
+        track('add_to_cart', { item_code: p.item_code });
         if (this.cart[p.item_code]) this.cart[p.item_code].qty++;
         else this.cart[p.item_code] = { product: p, qty: 1 };
       },

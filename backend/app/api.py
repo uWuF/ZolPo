@@ -10,6 +10,16 @@ Routes
   GET  /api/compat       cross-chain barcode overlap
   POST /api/enrich       Open Food Facts batch (English names + images)
   GET  /api/placeholder/{keyword}.svg
+
+Accounts (users.db — separate file, see users_db.py)
+  POST /api/auth/request-link   email a one-time magic sign-in link
+  GET  /api/auth/verify         redeem the link → session cookie → redirect /
+  POST /api/auth/logout
+  GET  /api/me                  current user + synced stores + consents
+  PUT  /api/me/stores           sync the store selection
+  POST /api/me/consents         record a consent change (append-only ledger)
+  POST /api/me/link-anon        claim this device's pre-signup events
+  POST /api/events              behavioural event batch (also logged-out)
 """
 
 from __future__ import annotations
@@ -19,15 +29,15 @@ import os
 import urllib.parse
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from .config import CHAINS, FRONTEND_DIR
 from .db import db_is_empty, get_db, init_db
 from .enrich import enrich_batch
 from .images import placeholder_svg
-from . import compat, registry, search
+from . import compat, mailer, registry, search, users_db
 
 log = logging.getLogger("zolpo")
 
@@ -35,6 +45,7 @@ log = logging.getLogger("zolpo")
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     init_db()
+    users_db.init_users_db()
     if db_is_empty():
         # Auto-fill from whatever has already been downloaded so a fresh checkout
         # is usable without a manual ingest step.
@@ -161,6 +172,113 @@ def api_meta():
 def api_compat():
     """Cross-chain barcode overlap (the comparable product set)."""
     return compat.db_overlap()
+
+
+# --------------------------------------------------------------------------- #
+# Accounts (users.db): magic-link auth, store sync, consents, events
+# --------------------------------------------------------------------------- #
+
+_SESSION_COOKIE = "zp_session"
+_SECURE_COOKIES = os.environ.get("ZOLPO_SECURE_COOKIES") == "1"   # set in prod (HTTPS)
+
+
+def _current_user(request: Request) -> dict | None:
+    return users_db.session_user(request.cookies.get(_SESSION_COOKIE, ""))
+
+
+def _require_user(request: Request) -> dict:
+    user = _current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="not signed in")
+    return user
+
+
+@app.post("/api/auth/request-link")
+def api_auth_request_link(request: Request, payload: dict = Body(...)):
+    """Email a one-time sign-in link. Never reveals whether the email exists."""
+    try:
+        res = users_db.request_magic_link(payload.get("email", ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid email")
+    except users_db.RateLimited:
+        raise HTTPException(status_code=429, detail="try again in a minute")
+    url = f"{mailer.BASE_URL}/api/auth/verify?token={res['token']}"
+    out = {"sent": True}
+    if not mailer.send_magic_link(res["email"], url):
+        # Dev mode (no SMTP): log the link, and hand it to *localhost* clients
+        # only — anything else could mint sessions for arbitrary emails.
+        log.warning("SMTP not configured — magic link for %s: %s", res["email"], url)
+        if request.client and request.client.host in ("127.0.0.1", "::1"):
+            out["dev_link"] = url
+    return out
+
+
+@app.get("/api/auth/verify")
+def api_auth_verify(token: str = Query(...)):
+    """The link from the email: token → session cookie → back to the app."""
+    res = users_db.redeem_magic_link(token)
+    if res is None:
+        return RedirectResponse("/?signed-in=expired")
+    resp = RedirectResponse("/?signed-in=1")
+    resp.set_cookie(_SESSION_COOKIE, res["session_token"],
+                    max_age=users_db.SESSION_TTL_DAYS * 86400,
+                    httponly=True, samesite="lax", secure=_SECURE_COOKIES)
+    return resp
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout(request: Request):
+    users_db.delete_session(request.cookies.get(_SESSION_COOKIE, ""))
+    resp = Response(content='{"ok": true}', media_type="application/json")
+    resp.delete_cookie(_SESSION_COOKIE)
+    return resp
+
+
+@app.get("/api/me")
+def api_me(request: Request):
+    user = _current_user(request)
+    if user is None:
+        return {"user": None}
+    return {"user": {"email": user["email"], "display_name": user["display_name"],
+                     "locale": user["locale"]},
+            "stores": users_db.get_user_stores(user["user_id"]),
+            "consents": users_db.get_consents(user["user_id"])}
+
+
+@app.put("/api/me/stores")
+def api_me_stores(request: Request, payload: dict = Body(...)):
+    """Server-side sync of the frontend's store selection (localStorage)."""
+    user = _require_user(request)
+    keys = users_db.set_user_stores(user["user_id"], payload.get("stores") or [])
+    return {"stores": keys}
+
+
+@app.post("/api/me/consents")
+def api_me_consents(request: Request, payload: dict = Body(...)):
+    user = _require_user(request)
+    kind = str(payload.get("kind", ""))
+    if kind not in ("analytics", "marketing", "data_insights"):
+        raise HTTPException(status_code=400, detail="unknown consent kind")
+    users_db.record_consent(user["user_id"], kind, bool(payload.get("granted")))
+    return {"consents": users_db.get_consents(user["user_id"])}
+
+
+@app.post("/api/me/link-anon")
+def api_me_link_anon(request: Request, payload: dict = Body(...)):
+    """Attach this device's pre-signup events to the freshly signed-in user."""
+    user = _require_user(request)
+    linked = users_db.link_anon(user["user_id"], payload.get("anon_id", ""))
+    return {"linked": linked}
+
+
+@app.post("/api/events")
+def api_events(request: Request, payload: dict = Body(...)):
+    """Behavioural event batch (allowlisted types; works logged-out via anon_id)."""
+    user = _current_user(request)
+    written = users_db.record_events(payload.get("anon_id", ""),
+                                     user["user_id"] if user else None,
+                                     payload.get("events") or [])
+    return {"written": written}
 
 
 # --------------------------------------------------------------------------- #

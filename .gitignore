@@ -13,3 +13,6 @@ backend/data/dumps/
 *.db.bak
 *.db-journal
 logging.log
+
+# User data — NEVER commit (emails, sessions, behavioural events)
+backend/data/users.db*

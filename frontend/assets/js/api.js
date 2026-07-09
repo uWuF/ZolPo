@@ -26,7 +26,30 @@
     storeHighlights: (storeKey) =>
       getJSON(`/api/store-highlights?store=${encodeURIComponent(storeKey)}`),
     enrich: (limit = 40) => getJSON(`/api/enrich?limit=${limit}`, { method: 'POST' }),
+
+    // ── accounts (users.db) ──────────────────────────────────────────────
+    me: () => getJSON('/api/me'),
+    requestLink: (email) => postJSON('/api/auth/request-link', { email }),
+    logout: () => getJSON('/api/auth/logout', { method: 'POST' }),
+    putStores: (keys) => postJSON('/api/me/stores', { stores: keys }, 'PUT'),
+    consent: (kind, granted) => postJSON('/api/me/consents', { kind, granted }),
+    linkAnon: (anonId) => postJSON('/api/me/link-anon', { anon_id: anonId }),
+    // Fire-and-forget: keepalive lets a batch survive tab close/navigation.
+    events: (anonId, events) =>
+      fetch('/api/events', {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anon_id: anonId, events }),
+      }).catch(() => {}),
   };
+
+  function postJSON(url, body, method = 'POST') {
+    return getJSON(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
 
   window.ZP = Object.assign(window.ZP || {}, { api });
 })();

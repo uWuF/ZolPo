@@ -274,5 +274,82 @@ class DbFixture(unittest.TestCase):
             {"day": "2026-07-01", "price": 6.9}, {"day": "2026-07-03", "price": 7.9}]}])
 
 
+class UsersDb(unittest.TestCase):
+    """Accounts/events live in users.db — a separate file with its own lifecycle."""
+
+    def setUp(self):
+        import app.users_db as udb
+        self.udb = udb
+        fd, self.path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self._old = udb.USERS_DB_PATH
+        udb.USERS_DB_PATH = self.path
+        udb.init_users_db()
+
+    def tearDown(self):
+        self.udb.USERS_DB_PATH = self._old
+        for suffix in ("", "-wal", "-shm"):   # WAL sidecars
+            try:
+                os.unlink(self.path + suffix)
+            except FileNotFoundError:
+                pass
+
+    def test_magic_link_roundtrip_and_one_time_use(self):
+        res = self.udb.request_magic_link("  Richard@Example.COM ")
+        self.assertEqual(res["email"], "richard@example.com")   # normalized
+        auth = self.udb.redeem_magic_link(res["token"])
+        self.assertTrue(auth["new_user"])
+        self.assertEqual(self.udb.session_user(auth["session_token"])["email"],
+                         "richard@example.com")
+        # the link is single-use, and logout kills the session
+        self.assertIsNone(self.udb.redeem_magic_link(res["token"]))
+        self.udb.delete_session(auth["session_token"])
+        self.assertIsNone(self.udb.session_user(auth["session_token"]))
+
+    def test_bad_email_and_rate_limit(self):
+        with self.assertRaises(ValueError):
+            self.udb.request_magic_link("not-an-email")
+        self.udb.request_magic_link("a@b.co")
+        with self.assertRaises(self.udb.RateLimited):   # < cooldown apart
+            self.udb.request_magic_link("a@b.co")
+
+    def test_expired_link_rejected(self):
+        res = self.udb.request_magic_link("a@b.co")
+        with self.udb.get_users_db() as conn:
+            conn.execute("UPDATE magic_links SET expires_at = '2000-01-01 00:00:00'")
+        self.assertIsNone(self.udb.redeem_magic_link(res["token"]))
+
+    def test_store_sync_drops_malformed_keys(self):
+        keys = self.udb.set_user_stores(
+            "u1", ["1:11", "2:733", "junk", "1:11; DROP TABLE users", None])
+        self.assertEqual(keys, ["1:11", "2:733"])
+        self.assertEqual(self.udb.get_user_stores("u1"), ["1:11", "2:733"])
+
+    def test_events_allowlist_cap_and_anon_linking(self):
+        n = self.udb.record_events("dev-1", None, [
+            {"type": "search", "query": "קוטג", "props": {"results": 3}},
+            {"type": "add_to_cart", "item_code": "7290004127329"},
+            {"type": "hack_the_planet"},          # not allowlisted → dropped
+            "garbage",                            # not a dict → dropped
+        ])
+        self.assertEqual(n, 2)
+        self.assertEqual(self.udb.record_events("dev-1", None,
+                                                [{"type": "search"}] * 30),
+                         self.udb.EVENTS_MAX_BATCH)   # batch hard cap
+        # Signing in on this device claims its logged-out history — once.
+        self.assertEqual(self.udb.link_anon("u1", "dev-1"), 27)
+        self.assertEqual(self.udb.link_anon("u2", "dev-1"), 0)   # already claimed
+
+    def test_consent_ledger_keeps_history(self):
+        self.udb.record_consent("u1", "analytics", True)
+        with self.udb.get_users_db() as conn:   # later revocation (distinct ts)
+            conn.execute("INSERT INTO consents (user_id, kind, granted, ts) "
+                         "VALUES ('u1','analytics',0,'2099-01-01 00:00:00')")
+        self.assertEqual(self.udb.get_consents("u1"), {"analytics": False})
+        with self.udb.get_users_db() as conn:   # the grant row is still there
+            n = conn.execute("SELECT COUNT(*) AS n FROM consents").fetchone()["n"]
+        self.assertEqual(n, 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

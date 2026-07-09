@@ -122,6 +122,23 @@ unit_of_measure / quantity` and per-store `prices.unit_price`
 (`UnitOfMeasurePrice`). `_attach_prices()` exposes `is_weighted`,
 `unit_of_measure` and a per-store `unit_prices` map alongside `prices`.
 
+### Accounts & events — separate `users.db` (`app/users_db.py`)
+Everything about *people* lives in a second SQLite file (`data/users.db`),
+never touched by reset ingests and linked to the catalog only by value
+(item_code / universal store key) in application code — no cross-file SQL.
+Auth is passwordless magic-link (`/api/auth/request-link` → emailed one-time
+token → `/api/auth/verify` sets an HttpOnly `zp_session` cookie); only SHA-256
+hashes of tokens are stored. Without `ZOLPO_SMTP_HOST` (see `app/mailer.py`)
+nothing is emailed — the link is logged and returned as `dev_link` to
+*localhost clients only*. `POST /api/events` appends allowlisted behavioural
+events (search/promo_open/add_to_cart…, hard caps server-side) keyed by a
+device `anon_id` (localStorage) that accumulates pre-signup and is claimed at
+sign-in via `/api/me/link-anon`; consents are an append-only ledger. The
+frontend buffers events in module scope in `app.js` (`track()`) and flushes
+batches on a timer / visibility-hidden. Store selection syncs to the account
+(`PUT /api/me/stores`) — the server copy wins on sign-in, else the local one
+seeds it.
+
 ### Promotions (`ingest/promos.py`)
 Two XML dialects across chains: `<Item>` + `PromotionEndDate` (Cerberus/Bina
 family) vs `<PromotionItem>` + `PromotionEndDateTime` (Shufersal family, Wolt,

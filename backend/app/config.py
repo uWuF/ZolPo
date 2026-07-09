@@ -19,6 +19,10 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BACKEND_DIR, "data")
 DUMPS_DIR = os.path.join(DATA_DIR, "dumps")          # data/dumps/<chain_key>/<store_id>/
 DB_PATH = os.path.join(DATA_DIR, "zolpo.db")
+# People live in a separate file from the catalog on purpose: zolpo.db is
+# rebuildable from the gov feeds, users.db is not — different backup cadence,
+# different security profile, and an easy standalone move to Postgres later.
+USERS_DB_PATH = os.path.join(DATA_DIR, "users.db")
 REGISTRY_PATH = os.path.join(DATA_DIR, "stores.json")  # canonical store registry
 FRONTEND_DIR = os.path.normpath(os.path.join(BACKEND_DIR, "..", "frontend"))
 
