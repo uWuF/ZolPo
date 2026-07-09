@@ -69,7 +69,14 @@ gov portals ──▶ ingest/ downloaders ──▶ data/dumps/<chain>/<store>/{
 ### The two keys that make cross-chain comparison work
 - **Barcode (`item_code`, EAN)** is the only reliable product-identity join key
   across chains — product names are chain-specific abbreviations and are never
-  used for matching, only for display.
+  used for matching, only for display. **Exception: store-internal codes.**
+  Short PLU codes (<8 digits) and embedded-price EAN-13 (prefix `2`) are NOT
+  global — chain A's `"10"` is a pear, chain B's `"10"` is something else.
+  `_internal_code()` (search.py) detects them and `_attach_prices()` collapses
+  such an item to its dominant chain so it is never compared across chains;
+  products carry an `internal_code` flag. Loose produce/deli/weighted goods are
+  the affected set — matching them properly (canonical commodity + ₪/kg) is the
+  planned Phase-2 work.
 - **Universal store key `"<chain_int>:<store_id>"`** (e.g. `"1:11"`, `"2:733"`)
   is used everywhere: API query params, price/promo maps, frontend selection
   state (`localStorage`), dump folder paths. Without it, store `"11"` at one
@@ -109,6 +116,12 @@ current files), so no code path may ever DELETE from it. Served by
 `GET /api/history/{item_code}`; it's the substrate for price graphs,
 deal-honesty checks and alerts.
 
+Ingest also captures the gov weight/unit fields (for future ₪/kg
+normalization of weighted goods): `products.is_weighted / unit_qty /
+unit_of_measure / quantity` and per-store `prices.unit_price`
+(`UnitOfMeasurePrice`). `_attach_prices()` exposes `is_weighted`,
+`unit_of_measure` and a per-store `unit_prices` map alongside `prices`.
+
 ### Promotions (`ingest/promos.py`)
 Two XML dialects across chains: `<Item>` + `PromotionEndDate` (Cerberus/Bina
 family) vs `<PromotionItem>` + `PromotionEndDateTime` (Shufersal family, Wolt,
@@ -144,11 +157,27 @@ product in that tile that has a resolved image.
 `frontend/index.html` is markup only. `frontend/assets/js/{translit,i18n,api,app}.js`
 must load in that order — each attaches to `window.ZP`, and `app.js`'s Alpine
 component reads off it. The landing page (`homeMode()` in `app.js`, true when
-there's no query/filter/category active) shows a hero + deals radar + category
-tile grid and fires **no catalog query** until the user searches, filters, or
-picks a category — don't reintroduce an unscoped `/api/search` call at boot.
-Everything is keyed on the universal store key; chains are colour-coded via
-`CHAIN_COLOR` in `app.js` so a price row's chain is obvious at a glance.
+there's no query/filter/category active) shows a hero + interactive store map +
+deals radar + category tile grid and fires **no catalog query** until the user
+searches, filters, or picks a category — don't reintroduce an unscoped
+`/api/search` call at boot. Everything is keyed on the universal store key;
+chains are colour-coded via `CHAIN_COLOR` in `app.js` so a price row's chain is
+obvious at a glance.
+
+The store map uses Leaflet + markercluster (CDN); the map/cluster objects live
+in **module scope in `app.js`, never in Alpine state** (a reactive Proxy breaks
+Leaflet). Pins cluster on zoom-out, split on zoom-in; tapping a store fetches
+`GET /api/store-highlights?store=<key>` → its top real deals + biggest recent
+price drops (from `price_history`). The category tiles come from
+`GET /api/cats` (Wolt-style: per-tile count + hero photo).
+
+### Scheduled data refresh
+A twice-daily scheduled task (`~/.claude/scheduled-tasks/zolpo-price-refresh/`,
+08:00 & 20:00) runs download → ingest → promos → `scripts/price_changes.py`,
+then reports a random sample of changed prices in Russian. It only advances the
+`price_history` moat if it actually runs (app must be open). `price_changes.py`
+prints the latest-day changes (a change = a delta row with an earlier row at a
+different price). Whole pipeline is allow-listed in `.claude/settings.local.json`.
 
 ## Further reading
 - `docs/ARCHITECTURE.md` — module-by-module responsibility tables, DB schema.
