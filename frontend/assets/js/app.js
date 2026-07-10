@@ -115,18 +115,22 @@
         if (!this.lastUpdate) return '';
         const d = new Date(this.lastUpdate.replace(' ', 'T'));
         if (isNaN(d)) return this.lastUpdate;
-        return d.toLocaleString(this.lang === 'he' ? 'he-IL' : 'en-GB',
+        const locale = { he: 'he-IL', ru: 'ru-RU' }[this.lang] || 'en-GB';
+        return d.toLocaleString(locale,
           { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
       },
 
       // ── product display ──────────────────────────────────────────────────
+      // Product names exist only in Hebrew (+ partial English). HE shows the
+      // original; every other UI language (EN, RU) gets the English/translit
+      // form — for RU users Latin beats an alphabet many olim can't read yet.
       productName(p) {
-        if (this.lang !== 'en') return p.item_name;
+        if (this.lang === 'he') return p.item_name;
         return p.item_name_en || translateProductName(p.item_name);  // real EN wins; else fallback
       },
       manufacturerName(p) {
         const raw = p.manufacture_name || '';
-        if (this.lang !== 'en') return raw;
+        if (this.lang === 'he') return raw;
         const exact = BRAND_MAP[raw.trim()];
         return exact !== undefined ? exact : translitHe(raw);
       },
@@ -375,8 +379,8 @@
         if (!promos.length && !drops.length)
           return `<div class="py-2 text-center text-slate-400 text-xs">${this.t('mapNothing')}</div>`;
         const row = (it, tone) => {
-          const name = this.lang === 'en'
-            ? (it.item_name_en || translateProductName(it.item_name)) : it.item_name;
+          const name = this.lang === 'he'
+            ? it.item_name : (it.item_name_en || translateProductName(it.item_name));
           const pct = Math.round((it.save_pct || 0) * 100);
           return `<div class="flex items-center gap-1.5 py-0.5">
               <span class="shrink-0 px-1 rounded text-white text-[10px] font-extrabold" style="background:${tone}">-${pct}%</span>
@@ -480,7 +484,7 @@
       },
       promoText(pr) {
         if (!pr) return '';
-        return this.lang === 'en' ? translatePromo(pr.text || '') : (pr.text || '');
+        return this.lang === 'he' ? (pr.text || '') : translatePromo(pr.text || '');
       },
       promoUntilText(pr) {
         if (!pr || !pr.end) return '';
