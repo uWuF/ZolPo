@@ -391,10 +391,10 @@
         };
         let html = '';
         if (promos.length)
-          html += `<div class="mt-1.5 mb-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600">🏷️ ${this.t('mapDeals')}</div>`
-                + promos.map(p => row(p, '#059669')).join('');
+          html += `<div class="mt-1.5 mb-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600">${this.t('mapDeals')}</div>`
+                + promos.map(p => row(p, '#009465')).join('');
         if (drops.length)
-          html += `<div class="mt-1.5 mb-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-500">📉 ${this.t('mapDrops')}</div>`
+          html += `<div class="mt-1.5 mb-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-500">${this.t('mapDrops')}</div>`
                 + drops.map(d => row(d, '#e11d48')).join('');
         return html;
       },
@@ -451,6 +451,11 @@
       // p.promos = { storeKey: [ {text, qty, price, end, kind}, … best-first ] }
       dealKinds() { return DEAL_KINDS; },
       kindIcon(k) { return KIND_ICON[k] || '🏷️'; },
+      // Deal-kind accent dot (chips + expanded panel) — colour, not emoji.
+      kindColor(k) {
+        return { one_plus_one: '#8b5cf6', x_for_y: '#2563eb', percent_off: '#e11d48',
+                 fixed_price: '#00aa76', club: '#d97706', other: '#64748b' }[k] || '#64748b';
+      },
       kindLabel(k) { return this.t('kind_' + k); },
       setDealKind(k) { this.dealKind = this.dealKind === k ? '' : k; this.search(); },
 
