@@ -150,57 +150,67 @@ def download_all() -> dict:
     for s in stores:
         by_chain.setdefault(s["chain_key"], []).append(s)
 
-    stats = {"ok": 0, "missing": 0}
+    stats = {"ok": 0, "missing": 0, "failed_chains": []}
     for ck, chain_stores in by_chain.items():
         chain = CHAINS.get(ck)
         if not chain:
             continue
-        portal = chain["portal"]
-        if portal == "cerberus":
-            client = CerberusClient(chain["cerberus_user"],
-                                    chain.get("cerberus_password", "")).login()
-            names = client.list_files("PromoFull")
-            for s in chain_stores:
-                p = download_store_file(client, s["store_id"],
-                                        dump_dir(ck, s["store_id"]), names, "PromoFull")
-                stats["ok" if p else "missing"] += 1
-        elif portal == "publishprice":
-            files = publishprice.list_files(days_back=2)
-            for s in chain_stores:
-                p = publishprice.download_store_file(files, s["store_id"],
-                                                     dump_dir(ck, s["store_id"]), "PromoFull")
-                stats["ok" if p else "missing"] += 1
-        elif portal == "bina":
-            names = bina.list_files(chain["bina_prefix"], "PromoFull")
-            for s in chain_stores:
-                p = bina.download_store_file(chain["bina_prefix"], s["store_id"],
-                                             dump_dir(ck, s["store_id"]), names, "PromoFull")
-                stats["ok" if p else "missing"] += 1
-        elif portal == "superpharm":
-            files = superpharm.list_files("PromoFull", {s["store_id"] for s in chain_stores})
-            for s in chain_stores:
-                p = superpharm.download_store_file(s["store_id"], dump_dir(ck, s["store_id"]),
-                                                   files, "PromoFull")
-                stats["ok" if p else "missing"] += 1
-        elif portal == "wolt":
-            files = wolt.list_files(days_back=2)
-            for s in chain_stores:
-                p = wolt.download_store_file(files, s["store_id"],
-                                             dump_dir(ck, s["store_id"]), "PromoFull")
-                stats["ok" if p else "missing"] += 1
-        elif portal == "citymarket":
-            rows = citymarket.list_rows()
-            for s in chain_stores:
-                p = citymarket.download_store_file(rows, s["store_id"],
-                                                   dump_dir(ck, s["store_id"]), "PromoFull")
-                stats["ok" if p else "missing"] += 1
-        else:  # shufersal
-            for s in chain_stores:
-                p = shufersal.download_store_file(s["store_id"],
-                                                  dump_dir(ck, s["store_id"]), "PromoFull")
-                stats["ok" if p else "missing"] += 1
-        print(f"  {ck}: promos downloaded", flush=True)
+        try:
+            _download_chain_promos(chain, ck, chain_stores, stats)
+            print(f"  {ck}: promos downloaded", flush=True)
+        except Exception as e:
+            # Same guard as scripts/download.py: a geo-blocked portal
+            # (Super-Pharm answers 492 outside IL) must not stop the rest.
+            print(f"  {ck}: promos FAILED: {type(e).__name__}: {e}", flush=True)
+            stats["failed_chains"].append(ck)
     return stats
+
+
+def _download_chain_promos(chain: dict, ck: str, chain_stores: list, stats: dict) -> None:
+    portal = chain["portal"]
+    if portal == "cerberus":
+        client = CerberusClient(chain["cerberus_user"],
+                                chain.get("cerberus_password", "")).login()
+        names = client.list_files("PromoFull")
+        for s in chain_stores:
+            p = download_store_file(client, s["store_id"],
+                                    dump_dir(ck, s["store_id"]), names, "PromoFull")
+            stats["ok" if p else "missing"] += 1
+    elif portal == "publishprice":
+        files = publishprice.list_files(days_back=2)
+        for s in chain_stores:
+            p = publishprice.download_store_file(files, s["store_id"],
+                                                 dump_dir(ck, s["store_id"]), "PromoFull")
+            stats["ok" if p else "missing"] += 1
+    elif portal == "bina":
+        names = bina.list_files(chain["bina_prefix"], "PromoFull")
+        for s in chain_stores:
+            p = bina.download_store_file(chain["bina_prefix"], s["store_id"],
+                                         dump_dir(ck, s["store_id"]), names, "PromoFull")
+            stats["ok" if p else "missing"] += 1
+    elif portal == "superpharm":
+        files = superpharm.list_files("PromoFull", {s["store_id"] for s in chain_stores})
+        for s in chain_stores:
+            p = superpharm.download_store_file(s["store_id"], dump_dir(ck, s["store_id"]),
+                                               files, "PromoFull")
+            stats["ok" if p else "missing"] += 1
+    elif portal == "wolt":
+        files = wolt.list_files(days_back=2)
+        for s in chain_stores:
+            p = wolt.download_store_file(files, s["store_id"],
+                                         dump_dir(ck, s["store_id"]), "PromoFull")
+            stats["ok" if p else "missing"] += 1
+    elif portal == "citymarket":
+        rows = citymarket.list_rows()
+        for s in chain_stores:
+            p = citymarket.download_store_file(rows, s["store_id"],
+                                               dump_dir(ck, s["store_id"]), "PromoFull")
+            stats["ok" if p else "missing"] += 1
+    else:  # shufersal
+        for s in chain_stores:
+            p = shufersal.download_store_file(s["store_id"],
+                                              dump_dir(ck, s["store_id"]), "PromoFull")
+            stats["ok" if p else "missing"] += 1
 
 
 def ingest_promos() -> dict:
