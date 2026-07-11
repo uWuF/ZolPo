@@ -196,6 +196,16 @@ then reports a random sample of changed prices in Russian. It only advances the
 prints the latest-day changes (a change = a delta row with an earlier row at a
 different price). Whole pipeline is allow-listed in `.claude/settings.local.json`.
 
+### Production deploy (`deploy/`)
+`deploy/setup-server.sh` bootstraps a fresh Ubuntu 24.04 box end-to-end
+(Caddy, systemd, cron refresh 08:00/20:00 Asia/Jerusalem, nightly backups,
+ufw, WAL, the Sectigo intermediate cert Linux needs for
+publishedprices.co.il) — see `deploy/README.md` for the rsync + bootstrap
+recipe. **Carrefour and Super-Pharm geo-block non-Israeli IPs** (timeout /
+HTTP 492): from a European datacenter those two chains can't refresh, so
+prefer an Israeli DC. One failing portal never kills a refresh — download.py
+and promos.py isolate each chain and log per-chain `FAILED` lines.
+
 ## Further reading
 - `docs/ARCHITECTURE.md` — module-by-module responsibility tables, DB schema.
 - `docs/DATA_SOURCES.md` — per-chain portal details, credentials, image sourcing.

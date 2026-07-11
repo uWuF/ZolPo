@@ -1,0 +1,3 @@
+# ZolPo: data refresh twice daily (server runs in Asia/Jerusalem), backups nightly.
+0 8,20 * * * zolpo /opt/zolpo/refresh.sh >> /var/log/zolpo/refresh.log 2>&1
+30 3 * * *  zolpo /opt/zolpo/backup.sh  >> /var/log/zolpo/backup.log  2>&1

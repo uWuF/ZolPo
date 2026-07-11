@@ -1,0 +1,19 @@
+[Unit]
+Description=ZolPo price-comparison API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zolpo
+Group=zolpo
+WorkingDirectory=/opt/zolpo/app/backend
+EnvironmentFile=/etc/zolpo.env
+ExecStart=/opt/zolpo/app/backend/.venv312/bin/python -m uvicorn main:app --app-dir /opt/zolpo/app/backend --host 127.0.0.1 --port 8020
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
