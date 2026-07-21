@@ -16,3 +16,6 @@ logging.log
 
 # User data — NEVER commit (emails, sessions, behavioural events)
 backend/data/users.db*
+
+# Local DB snapshots — too large for git, and users.db is personal data
+backups/
