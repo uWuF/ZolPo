@@ -32,7 +32,17 @@ FRONTEND_DIR = os.path.normpath(os.path.join(BACKEND_DIR, "..", "frontend"))
 # `id`            – small internal integer, the chain half of every store key.
 # `chain_id_gov`  – the ChainID used in the government price files / filenames.
 # `portal`        – which downloader in ingest/ knows how to fetch this chain.
-# `cerberus_user` – login for the shared publishedprices.co.il portal (no password).
+# `cerberus_user` – login for the shared publishedprices.co.il portal.
+#
+# NOTE ON CREDENTIALS: the portal logins in this file are *not* secrets and
+# are deliberately committed. Israel's price-transparency regulation
+# (חוק לקידום התחרות בענף המזון) obliges every chain to publish its price
+# files to the public, and the chains publish these usernames/passwords
+# openly for exactly that purpose — they are printed on the portals' own
+# sign-in pages and in the government's chain list. They grant read-only
+# access to the same files any citizen can download. Nothing here can be
+# used to modify data or reach a private account, so there is no reason to
+# move them into environment variables.
 #
 # The universal store key used everywhere (API, prices map, frontend selection,
 # dump folders) is  f"{chain['id']}:{store_id}"  — this is what prevents a
@@ -73,7 +83,7 @@ CHAINS = {
         "name_en": "Yellow",
         "portal": "cerberus",
         "cerberus_user": "Paz_bo",
-        "cerberus_password": "paz468",
+        "cerberus_password": "paz468",  # public portal password — see the note above
         "format_en": "Yellow (convenience)",
     },
     "keshet": {

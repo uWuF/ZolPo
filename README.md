@@ -1,5 +1,9 @@
 # ZolPo · זול-פה
 
+[![tests](https://github.com/uWuF/ZolPo/actions/workflows/tests.yml/badge.svg)](https://github.com/uWuF/ZolPo/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 Real-time **Israeli supermarket price comparison**. Compare the *same product*
 across stores and chains using Israel's open government price-transparency data.
 
@@ -11,6 +15,14 @@ Pharm, 13 Yellow (Paz), 6 Wolt Market, 5 City Market, 4 Rami Levy, 3 Fresh
 Market, 2 King Store, 2 Super Bareket and 1 Osher Ad — plus **~128k active
 promotions** across every store. Built to scale to more chains and cities by
 adding one config entry + (sometimes) one downloader.
+
+![ZolPo landing page — hero, live store map and deals radar](docs/img/home.png)
+
+Search once, see every store you shop at side by side — cheapest highlighted,
+promotions folded into the price, and a dash where the store simply does not
+carry the barcode:
+
+![Search results comparing one barcode across six chains](docs/img/compare.png)
 
 ```
 ┌─────────────┐   download    ┌──────────┐  ingest   ┌──────────┐   API    ┌──────────┐
@@ -52,7 +64,9 @@ catalog; the rest fall back to category placeholders). Images and English names
 live in `product_meta`, which **survives re-ingest** — no need to re-resolve
 after a data refresh. See [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md#product-images).
 
-Run the unit tests after touching the pipeline or search:
+Run the unit tests after touching the pipeline or search — 28 stdlib `unittest`
+cases, no network and no populated DB required, also run on every push by
+[GitHub Actions](.github/workflows/tests.yml):
 
 ```bash
 backend/.venv312/bin/python backend/tests/test_zolpo.py
@@ -102,3 +116,7 @@ docs/             ARCHITECTURE · DATA_SOURCES · ADDING_A_CHAIN
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
+
+## License
+
+[MIT](LICENSE) © Richard Iankevich

@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "zolpo",
-      "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "exec backend/.venv312/bin/python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port ${PORT:-8020}"],
-      "autoPort": true
+      "runtimeExecutable": "backend/.venv312/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--app-dir", "backend", "--host", "127.0.0.1", "--port", "8020"],
+      "port": 8020
     }
   ]
 }

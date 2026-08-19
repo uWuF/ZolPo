@@ -19,3 +19,7 @@ backend/data/users.db*
 
 # Local DB snapshots — too large for git, and users.db is personal data
 backups/
+
+# Local Claude Code permission grants — machine-specific, not project config
+.claude/settings.local.json
+.claude/launch.json
