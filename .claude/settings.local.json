@@ -11,7 +11,16 @@
       "Bash(cd /Users/iankevichri/Desktop/food_track/backend && ls .venv312/bin/python && date)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(.venv312/bin/python -c ' *)",
+      "Bash(rm -v data/dumps/wolt/002/PriceFull7290058249350-000-002-20260713-000028.xml data/dumps/super_pharm/109/PriceFull7290172900007-000-109-20260725-070531.xml data/dumps/city_market/040/PriceFull0000000000000-040-202607250046.xml)",
+      "Bash(echo \"EXIT:$?\")",
+      "Read(//tmp/**)",
+      "Bash(env)",
+      "Bash(nc -z 127.0.0.1 7890)",
+      "Bash(read f *)",
+      "Bash(cd /Users/iankevichri/Desktop/food_track/backend && ls -la \"data/dumps/super_pharm/039/PromoFull7290172900007-000-039-20260815-071547.xml\" && rm \"data/dumps/super_pharm/039/PromoFull7290172900007-000-039-20260815-071547.xml\" && echo \"removed\")",
+      "Bash(.venv312/bin/python scripts/promos.py --ingest)"
     ]
   }
 }
