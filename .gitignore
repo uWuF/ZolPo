@@ -22,4 +22,3 @@ backups/
 
 # Local Claude Code permission grants — machine-specific, not project config
 .claude/settings.local.json
-.claude/launch.json
